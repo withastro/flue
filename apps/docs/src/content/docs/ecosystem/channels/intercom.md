@@ -74,7 +74,7 @@ import { channel as intercom } from './channels/intercom.ts';
 app.route('/channels/intercom', intercom.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/intercom` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/intercom` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -207,10 +207,10 @@ conversation id into an instance id. An app that serves multiple workspaces
 filters on `notification.app_id` itself, or uses application-owned
 installation state to select credentials.
 
-`initialData` is the instance's creation data: recorded once when the event creates
+`initialData` is the instance's creation data. It is recorded once when the event creates
 the instance and ignored afterward, so the channel passes it on every
 dispatch. It carries the workspace and conversation identifiers the tool
-needs — the agent reads them with `useInitialData()` instead of parsing the
+needs. The agent reads them with `useInitialData()` instead of parsing the
 instance id.
 
 ## Official client
@@ -262,7 +262,7 @@ configuration instead of accepting an API host from a model or webhook field.
 Pin `version: '2.14'`. `intercom-client@7.0.3` generates its REST request and
 response types for API version 2.14. Newer webhook topic documentation does not
 make those generated REST types compatible with a manually forced 2.15 header.
-Use a narrow Fetch client for a genuinely 2.15-only operation until the
+Use a narrow Fetch client for a 2.15-only operation until the
 official SDK supports it.
 
 ## Bind the tool
@@ -347,14 +347,14 @@ through unchanged. A thrown callback surfaces to the framework error handler
 as `500`.
 
 Intercom acknowledges on any `2xx`. Use `200` for ordinary acknowledgment.
-Return another status only when its provider behavior is intentional: `410`
-disables the subscription, while `429` throttles it. Ordinary failures are
+`410` disables the subscription and `429` throttles it, so return another
+status only when you intend that provider behavior. Ordinary failures are
 retried once after approximately one minute.
 
 Intercom expects a `2xx` within about five seconds and otherwise retries the
 notification once after one minute. The channel does not enforce this with a
 timer, because a promise timeout cannot cancel arbitrary JavaScript work.
-Admit durable work quickly — dispatch and return — and defer long-running
+Admit durable work quickly (dispatch and return) and defer long-running
 processing beyond the acknowledgment path.
 
 Notifications can be duplicated and arrive out of order. Use a non-null

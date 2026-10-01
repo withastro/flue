@@ -77,7 +77,7 @@ import { channel as linear } from './channels/linear.ts';
 app.route('/channels/linear', linear.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/linear` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/linear` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -239,11 +239,11 @@ Use `accessToken` instead of `apiKey` for an installed OAuth application.
 OAuth installation storage and organization-specific token selection remain
 application concerns.
 
-`initialData` is the instance's creation data: recorded once when the event creates
-the instance and ignored afterward, so the channel passes it on every
-dispatch. It carries the issue or agent-session fields the tool needs — the
-agent reads them with `useInitialData()` instead of parsing the instance id —
-plus the issue title when the webhook includes one. Per-message facts stay on
+The channel passes `initialData`, the instance's creation data, on every
+dispatch, because it is recorded once when the event creates the instance and
+ignored afterward. It carries the issue or agent-session fields the tool needs, plus the issue
+title when the webhook includes one. The agent reads them with
+`useInitialData()` instead of parsing the instance id. Per-message facts stay on
 the signal's `attributes`.
 
 ## Wire the agent
@@ -296,7 +296,7 @@ deliveries are discriminated on `type` (`'Comment'`, `'Issue'`, `'Project'`, …
 and carry `action` and `data`; Flue forwards the body unmodified, including
 verified deliveries the union does not model. The union has a catch-all member
 that keeps `type` widened to `string`, so a literal `type` check alone does not
-narrow it — pair the literal with a discriminating nested field in a small
+narrow it. Pair the literal with a discriminating nested field in a small
 application-side type guard (as in the channel module above).
 
 The application derives instance ids from native fields. Top-level comments

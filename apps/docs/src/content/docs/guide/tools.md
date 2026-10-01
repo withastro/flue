@@ -4,13 +4,13 @@ description: Give agents the ability to call your application code and act on ex
 lastReviewedAt: 2026-07-23
 ---
 
-A **tool** is a function you write, described to the model, that the model may call while it works — look up an order, file a ticket, issue a refund. The model decides _when_ to call; your code decides _what happens_. Where a [skill](/docs/guide/skills/) provides reusable instructions and the [sandbox](/docs/guide/sandboxes/) provides file and command access, a tool executes your application's code.
+A **tool** is a function you write, described to the model, that the model may call while it works, for example to look up an order, file a ticket, or issue a refund. The model decides _when_ to call; your code decides _what happens_. Where a [skill](/docs/guide/skills/) provides reusable instructions and the [sandbox](/docs/guide/sandboxes/) provides file and command access, a tool executes your application's code.
 
 This guide covers defining custom tools and mounting them with `useTool`, the file and shell tools a sandbox brings, harness tools, durable tools, conditional tools, approval gates, and protecting what a tool can access.
 
 ## Your first tool
 
-A tool definition has four parts: a `name` the model calls it by, a `description` that teaches the model when to use it, an optional `input` schema for its arguments, and a `run` function containing your code. Define it with `defineTool(...)`:
+A tool definition has a `name` the model calls it by, a `description` that teaches the model when to use it, an optional `input` schema for its arguments, and a `run` function containing your code. Define it with `defineTool(...)`:
 
 ```ts title="src/tools/lookup-order.ts"
 import { defineTool } from '@flue/runtime';
@@ -42,17 +42,17 @@ export function OrderAssistant() {
 }
 ```
 
-The model reads the tool's name, description, and input schema; when it decides the tool fits, it calls with arguments; Flue validates them against the schema, runs your `run` function, and returns the result to the model.
+The model reads the tool's name, description, and input schema. When it decides the tool fits, it calls the tool with arguments. Flue validates them against the schema, runs your `run` function, and returns the result to the model.
 
-`defineTool(...)` validates the definition and returns it frozen — the natural shape for tools shared across agents from a `src/tools/` directory. For a one-off, `useTool` accepts the same definition object written inline (see the [conditional example below](#conditional-tools)). Either way, every active tool needs a unique name: a duplicate name, or a collision with a framework-reserved name like `task` or `activate_skill`, throws when the tool set is assembled.
+`defineTool(...)` validates the definition and returns it frozen. Use it for tools shared across agents from a `src/tools/` directory. For a one-off, `useTool` accepts the same definition object written inline (see the [conditional example below](#conditional-tools)). Either way, every active tool needs a unique name. A duplicate name, or a collision with a framework-reserved name like `task` or `activate_skill`, throws when the tool set is assembled.
 
 ## How a tool call works
 
-**What the model sees.** Each mounted tool is presented to the model as its `name`, its `description`, and its `input` schema (converted to JSON Schema; a tool without an `input` schema presents an empty object). The description is the model's _only_ documentation: state what the tool does, when to use it, and what it returns. Vague descriptions are the most common cause of a tool being called incorrectly or not at all.
+**What the model sees.** Each mounted tool is presented to the model as its `name`, its `description`, and its `input` schema (converted to JSON Schema). A tool without an `input` schema presents an empty object. The description is the model's _only_ documentation, so state what the tool does, when to use it, and what it returns. Vague descriptions are the most common cause of a tool being called incorrectly or not at all.
 
-**Input.** The `input` schema is a [Valibot](https://valibot.dev) schema and must be a top-level object schema. Model-supplied arguments are parsed by it before `run` executes, and `run` receives the parsed value as `data`, fully typed. When validation fails, `run` is never called — the failure goes back to the model as a tool error so it can correct its arguments and retry.
+**Input.** The `input` schema is a [Valibot](https://valibot.dev) schema and must be a top-level object schema. Model-supplied arguments are parsed by it before `run` executes, and `run` receives the parsed value as `data`, with its type inferred. When validation fails, `run` is never called. The failure goes back to the model as a tool error so it can correct its arguments and retry.
 
-**Output.** `run` returns a result envelope, `{ output?, terminate? }`, not a bare value. `output` is the JSON-compatible data (an object, array, string, number — anything JSON-serializable) that's JSON-stringified for the model, and a bare `string` return is shorthand for `{ output: <string> }`. Returning nothing is allowed only when no `output` schema is declared; any other bare return throws. `terminate: true` ends the agent's turn once the current tool batch settles, the same contract `finish`/`give_up` use. Add an optional `output` schema when the returned shape should be typed and validated too:
+**Output.** `run` returns a result envelope, `{ output?, terminate? }`, not a bare value. `output` is the JSON-compatible data (an object, array, string, number, or anything else JSON-serializable) that's JSON-stringified for the model. A bare `string` return is shorthand for `{ output: <string> }`. Returning nothing is allowed only when no `output` schema is declared. Any other bare return throws. `terminate: true` ends the agent's turn once the current tool batch settles, the same behavior `finish`/`give_up` use. Add an optional `output` schema when the returned shape should be typed and validated too:
 
 ```ts
 const checkInventory = defineTool({
@@ -66,19 +66,19 @@ const checkInventory = defineTool({
 });
 ```
 
-**Errors.** A throw inside `run` does not crash the agent. It becomes an error result the model sees, so it can retry, try another approach, or tell the user. Throw (or return a descriptive failure value) rather than swallowing errors — the model can only respond to failures it can see.
+**Errors.** A throw inside `run` does not crash the agent. It becomes an error result the model sees, so it can retry, try another approach, or tell the user. Throw (or return a descriptive failure value) rather than swallowing errors. The model can only respond to failures it can see.
 
 **The rest of the context.** Alongside `data`, every `run` receives:
 
-- `signal` — an `AbortSignal` for the call. Pass it to your own async work so a cancelled tool call stops promptly. A `run` that ignores the signal cannot wedge the agent: when the signal fires, the runtime abandons the await — the call fails with an `AbortError` saying the work may still be running, and the orphaned promise's eventual result is discarded.
-- `log` — progress logging (`log.info(...)`, `log.warn(...)`, `log.error(...)`) for long-running tools. Lines stream into the conversation as events your application can observe; they are not part of the result and the model never sees them.
+- `signal` — an `AbortSignal` for the call. Pass it to your own async work so a cancelled tool call stops promptly. A `run` that ignores the signal cannot wedge the agent. When the signal fires, the runtime abandons the await. The call fails with an `AbortError` saying the work may still be running, and the orphaned promise's eventual result is discarded.
+- `log` — progress logging (`log.info(...)`, `log.warn(...)`, `log.error(...)`) for long-running tools. Lines stream into the conversation as events your application can observe. They are not part of the result and the model never sees them.
 - `toolCallId` — the id of this specific call, the same id carried on the call's conversation events. Use it to correlate side effects with the call that raised them.
 
-Optional flags on the definition extend the context further: `harness: true` adds `harness` and `durable: true` adds `step`, both covered below. The full contract lives in the [`defineTool` reference](/docs/reference/agent-api/#definetool).
+Optional flags on the definition extend the context further. `harness: true` adds `harness` and `durable: true` adds `step`, both covered below. The [`defineTool` reference](/docs/reference/agent-api/#definetool) has the full details.
 
 ## Built-in tools
 
-An agent with a [sandbox](/docs/guide/sandboxes/) gains a standard set of built-in tools that operate on it (without one, these tools aren't in the set — the model can't call what isn't there):
+An agent with a [sandbox](/docs/guide/sandboxes/) gains a standard set of built-in tools that operate on it. Without a sandbox, these tools aren't in the set, so the model can't call them:
 
 | Tool    | What it does                                                         |
 | ------- | -------------------------------------------------------------------- |
@@ -89,18 +89,18 @@ An agent with a [sandbox](/docs/guide/sandboxes/) gains a standard set of built-
 | `grep`  | Search file contents for a regex pattern                             |
 | `glob`  | Find files by filename pattern                                       |
 
-Each tool's parameters, truncation limits, and error behavior are documented in [Agent Behavior — Built-in tools](/docs/reference/agent-behavior/#built-in-tools).
+Each tool's parameters, truncation limits, and error behavior are documented in [Agent Behavior: Built-in tools](/docs/reference/agent-behavior/#built-in-tools).
 
-On top of these, the framework adds its own tools when the capability exists: `task` for [subagent delegation](/docs/guide/subagents/) (always present), `activate_skill` when the agent has [skills](/docs/guide/skills/), and `read_skill_resource` when a skill packages resource files. These names are reserved — a custom tool can't take them.
+On top of these, the framework adds `task` for [subagent delegation](/docs/guide/subagents/) (always present), `activate_skill` when the agent has [skills](/docs/guide/skills/), and `read_skill_resource` when a skill packages resource files. These names are reserved, so a custom tool can't use them.
 
-A sandbox adapter can replace this set with its own — see [Sandbox-provided tools](/docs/guide/sandboxes/#sandbox-provided-tools) and [`SandboxToolFactory`](/docs/reference/sandbox-api/#sandboxtoolfactory) in the Sandbox Adapter API.
+A sandbox adapter can replace this set with its own. See [Sandbox-provided tools](/docs/guide/sandboxes/#sandbox-provided-tools) and [`SandboxToolFactory`](/docs/reference/sandbox-api/#sandboxtoolfactory) in the Sandbox Adapter API.
 
 ## Harness tools
 
-An ordinary tool is a pure function of its input: data in, result out. Declare `harness: true` when a tool needs to reach back into the agent's own runtime — its sandbox, or the model itself. The `run` function then receives `harness`, the tool's interface to both:
+An ordinary tool is a pure function of its input. Declare `harness: true` when a tool needs to reach back into the agent's own sandbox or model. The `run` function then receives `harness`, the tool's interface to both:
 
-- `harness.sandbox` — the agent's live environment: `readFile`, `writeFile`, `exec`, and the other [sandbox verbs](/docs/reference/agent-api/#harnesssandbox), touched directly with no conversation record. Throws when the agent declared no [sandbox](/docs/guide/sandboxes/).
-- `harness.prompt(text, options?)` — run a model operation in the harness's own scratch conversation. Repeated calls continue it, so a later prompt sees what earlier calls established. Pass `options.result` (a Valibot schema) to require validated structured data, or `options.tools` to offer extra tools for just that operation.
+- `harness.sandbox` — the agent's live environment, with `readFile`, `writeFile`, `exec`, and the other [sandbox verbs](/docs/reference/agent-api/#harnesssandbox), touched directly with no conversation record. Throws when the agent declared no [sandbox](/docs/guide/sandboxes/).
+- `harness.prompt(text, options?)` — run a model operation in the harness's own scratch conversation. Repeated calls continue it, so a later prompt sees what earlier calls established. Pass `options.result` (a Valibot schema) to require validated structured data, or `options.tools` to offer extra tools for that operation only.
 
 A harness tool can stage inputs, run focused model work, and validate the result behind one tool call:
 
@@ -126,13 +126,13 @@ export const reviewContract = defineTool({
 });
 ```
 
-Harness invocations are scoped to the tool call: the harness materializes when the call runs and closes when it settles. They count against the delegation-depth cap, and any child conversations they open are retained on the parent conversation for inspection — the same accounting a delegated [subagent](/docs/guide/subagents/) uses. Because a harness only exists inside an agent session, `harness: true` tools never run standalone; tools without the flag cannot reach the runtime at all. See the [Harness reference](/docs/reference/agent-api/#harness) for the full surface.
+Harness invocations are scoped to the tool call. The harness materializes when the call runs and closes when it settles. They count against the delegation-depth cap, and any child conversations they open are retained on the parent conversation for inspection, the same accounting a delegated [subagent](/docs/guide/subagents/) uses. Because a harness only exists inside an agent session, `harness: true` tools never run standalone. Tools without the flag cannot reach the runtime at all. See the [Harness reference](/docs/reference/agent-api/#harness) for the full API.
 
 ## Durable tools
 
-When a process crashes mid-turn, Flue recovers the conversation from its durable records — but an ordinary tool call that was in flight is _not_ re-executed. The runtime can't know which side effects already happened, so the interrupted call settles with an unknown-outcome error and the model continues from there.
+When a process crashes mid-turn, Flue recovers the conversation from its durable records. However, an ordinary tool call that was in flight is _not_ re-executed. The runtime can't know which side effects already happened, so the interrupted call settles with an unknown-outcome error and the model continues from there.
 
-For work that must complete — a payment, a multi-step sync, a provisioning job — declare the tool `durable: true`. That opts it into a different contract: `run` receives `step`, and every side effect goes through `step.do(name, fn)`:
+For work that must complete, such as a payment, a multi-step sync, or a provisioning job, declare the tool `durable: true`. The tool then follows different rules. `run` receives `step`, and every side effect goes through `step.do(name, fn)`:
 
 ```ts title="src/tools/provision-workspace.ts"
 import { defineTool } from '@flue/runtime';
@@ -154,20 +154,20 @@ export const provisionWorkspace = defineTool({
 });
 ```
 
-`step.do(name, fn)` runs `fn` once per name for the tool call and durably records its returned value before resolving. When an interruption strikes mid-run, recovery re-executes the whole call: completed steps return their recorded values without running again, and execution continues from the first step that never finished. If the crash landed between `create-tenant` and the third `seed:` step above, the re-run replays the tenant and the first two seeds from their records and picks up at the third.
+`step.do(name, fn)` runs `fn` once per name for the tool call and durably records its returned value before resolving. When an interruption happens mid-run, recovery re-executes the whole call. Completed steps return their recorded values without running again, and execution continues from the first step that never finished. If the crash landed between `create-tenant` and the third `seed:` step above, the re-run replays the tenant and the first two seeds from their records and picks up at the third.
 
 Four rules:
 
-- **Everything effectful goes in a step.** Code between steps re-executes on recovery, so keep it cheap and effect-free — derive values, branch, loop.
+- **Everything effectful goes in a step.** Code between steps re-executes on recovery, so limit it to cheap, effect-free work such as deriving values, branching, and looping.
 - **Names identify the work.** Derive them deterministically (`seed:${project.name}`), never from randomness or timing. Reusing a name within one call throws.
 - **Values are JSON and should stay small.** Store large artifacts in the sandbox and record a pointer.
 - **Steps are exactly-once-recorded, at-least-once-executed.** A crash in the narrow window between a step finishing and its record landing re-runs that one step, so steps around external effects should be individually idempotent.
 
-Step records are operational bookkeeping: the model sees only the tool's final result, and step progress surfaces live as the call's log events. A thrown error is not an interruption — like any tool, a durable tool that throws settles the call as a tool error the model sees, and nothing retries automatically. Steps are scoped to one call: when the model invokes the tool again, they run fresh. The flags compose — a `durable: true, harness: true` tool receives both `step` and `harness`; wrap `harness.prompt(...)` in a step so recovery doesn't re-prompt. See [Durability](/docs/guide/durability/#durable-tools-and-stepdo) for how this fits the wider recovery model.
+Step records are operational bookkeeping. The model sees only the tool's final result, and step progress appears live as the call's log events. A thrown error is not an interruption. Like any tool, a durable tool that throws settles the call as a tool error the model sees, and nothing retries automatically. Steps are scoped to one call, so when the model invokes the tool again, they run fresh. The flags compose. A `durable: true, harness: true` tool receives both `step` and `harness`. Wrap `harness.prompt(...)` in a step so recovery doesn't re-prompt. See [Durability](/docs/guide/durability/#durable-tools-and-stepdo) for how this fits the wider recovery model.
 
 ## Bounded tools
 
-A tool whose internals hang — a transport that never observes its abort signal, an unbounded response-body read, a wedged SDK call — can silently consume an entire submission's durability budget while every turn around it looks healthy. Declare `timeoutMs` to bound one call:
+A tool whose internals hang (a transport that never observes its abort signal, an unbounded response-body read, a wedged SDK call) can silently consume an entire submission's durability budget while every turn around it looks healthy. Declare `timeoutMs` to bound one call:
 
 ```ts title="src/tools/lookup-catalog.ts"
 import { defineTool } from '@flue/runtime';
@@ -185,11 +185,11 @@ export const lookupCatalog = defineTool({
 });
 ```
 
-When the deadline expires, the harness aborts the tool's `context.signal` (signal-aware code can clean up), settles the call with a `ToolTimeoutError` — surfaced to the model as the tool's error result, distinct from a thrown tool error — and discards the abandoned run's late settlement. The conversation continues: the model sees `Tool "<name>" timed out after <ms>ms` and can retry or change approach, while the submission's [durability timeout](/docs/guide/durability/) remains the outer backstop. A host abort (a session abort, a deployment) still lands as an abort, not a timeout.
+When the deadline expires, the harness aborts the tool's `context.signal` (signal-aware code can clean up), settles the call with a `ToolTimeoutError`, and discards the abandoned run's late settlement. The model receives the `ToolTimeoutError` as the tool's error result, distinct from a thrown tool error. The conversation continues. The model sees `Tool "<name>" timed out after <ms>ms` and can retry or change approach, while the submission's [durability timeout](/docs/guide/durability/) remains the outer backstop. A host abort (a session abort, a deployment) still lands as an abort, not a timeout.
 
 ## Conditional tools
 
-The agent function re-renders before every model call, and each render declares its tool set from scratch. That makes a tool's _presence_ just another piece of program logic: wrap `useTool` in a condition, and the tool exists only in the renders where the condition holds. Gate it on [persistent state](/docs/guide/agent-hooks/#persisted-state) and the agent can unlock its own capabilities:
+The agent function re-renders before every model call, and each render declares its tool set from scratch. That makes a tool's _presence_ part of your program logic. Wrap `useTool` in a condition, and the tool exists only in the renders where the condition holds. Gate it on [persistent state](/docs/guide/agent-hooks/#persisted-state) and the agent can unlock its own capabilities:
 
 ```ts title="src/agents/release-manager.ts"
 'use agent';
@@ -219,22 +219,22 @@ export function ReleaseManager() {
 }
 ```
 
-Until an operator approves, `publish_release` doesn't exist — an unmounted tool can't be called, a stronger guarantee than an instruction not to use it. When the set changes between renders, the runtime announces the delta to the model in a `resources` signal at the next turn boundary ("New tool available: …"), keeping the transcript coherent. See [Dynamic resources](/docs/reference/agent-api/#dynamic-resources) for exactly how changes are narrated.
+Until an operator approves, `publish_release` doesn't exist. An unmounted tool can't be called, which is a stronger guarantee than an instruction not to use it. When the set changes between renders, the runtime announces the delta to the model in a `resources` signal at the next turn boundary ("New tool available: …"), keeping the transcript coherent. See [Dynamic resources](/docs/reference/agent-api/#dynamic-resources) for how the runtime announces changes.
 
-> **Note:** Changing the tool set rewrites the provider's tools array, which invalidates its prompt cache, so gate tools on state that changes rarely. The exception is a tool unlocked by a completed tool call, the way `record_approval` unlocks `publish_release` here: current Anthropic models (except Haiku) load its definition at the point in the conversation where it appeared, and the cache survives.
+> **Note:** Changing the tool set rewrites the provider's tools array, which invalidates its prompt cache, so gate tools on state that changes rarely. The exception is a tool unlocked by a completed tool call, the way `record_approval` unlocks `publish_release` here. Current Anthropic models (except Haiku) load its definition at the point in the conversation where it appeared, so the cache survives.
 
-Tools built this way pair naturally with [custom hooks](/docs/guide/agent-hooks/#custom-hooks): a `useEscalation()` hook that bundles the gate, the tools, and the matching instructions can be shared across every agent that needs the same behavior.
+Tools built this way pair naturally with [custom hooks](/docs/guide/agent-hooks/#custom-hooks). For example, a `useEscalation()` hook that bundles the gate, the tools, and the matching instructions can be shared across every agent that needs the same behavior.
 
 ## Approval gates
 
-A conditional tool unlocks a whole _capability_. Sometimes you need a person to approve one specific call — this refund, this release, these arguments — before it runs. Flue has no built-in approval API; this section shows a pattern built from the hooks above that you can copy and adapt.
+A conditional tool unlocks a whole _capability_. Sometimes you need a person to approve one specific call (this refund, this release, these arguments) before it runs. Flue has no built-in approval API. This section shows a pattern built from the hooks above that you can copy and adapt.
 
 Don't make a tool's `run` wait for a person. While a tool call is running, the agent's response is still in progress, and a new message only joins it at a turn boundary, so the approval could never arrive. The wait would also count against the submission's [durability timeout](/docs/guide/durability/#retry-budget-and-timeout), and an interrupted call is not re-run. Instead, record the request and end the response. The decision arrives later as its own message, and the agent runs the stored call then:
 
-1. The model calls the tool. `run` saves the exact arguments in [persistent state](/docs/guide/agent-hooks/#persisted-state), keyed by the call's `toolCallId`, and returns a `pending_approval` result with `terminate: true`. The response ends and the conversation goes idle — no process waits for anyone.
-2. Your application shows the request to a person: a card in your UI, a button in a chat channel.
+1. The model calls the tool. `run` saves the exact arguments in [persistent state](/docs/guide/agent-hooks/#persisted-state), keyed by the call's `toolCallId`, and returns a `pending_approval` result with `terminate: true`. The response ends and the conversation goes idle. No process waits for anyone.
+2. Your application shows the request to a person, for example as a card in your UI or a button in a chat channel.
 3. A trusted route delivers the decision into the conversation as a signal.
-4. A [`useAgentStart`](/docs/reference/agent-hooks-api/#useagentstart) callback, which runs before the model reads that signal, executes the stored arguments on approval — not whatever the model might send next time — and appends the outcome for the model to read.
+4. A [`useAgentStart`](/docs/reference/agent-hooks-api/#useagentstart) callback, which runs before the model reads that signal, executes the stored arguments on approval, instead of whatever the model might send next time, and appends the outcome for the model to read.
 
 The gate as a custom hook:
 
@@ -336,7 +336,7 @@ export function ReleaseManager() {
 }
 ```
 
-The decision comes in through a route you control, not straight from the browser into the conversation: anyone who can post to the conversation could otherwise approve calls. The route authenticates the approver, then [`dispatch`es](/docs/guide/building-agents/#dispatch) the signal. Keying the dispatch on the approval id means the first decision wins — a second, different decision for the same request is rejected with a `409`:
+The decision comes in through a route you control, not straight from the browser into the conversation. Otherwise, anyone who can post to the conversation could approve calls. The route authenticates the approver, then [`dispatch`es](/docs/guide/building-agents/#dispatch) the signal. Keying the dispatch on the approval id means the first decision wins. A second, different decision for the same request is rejected with a `409`:
 
 ```ts title="src/app.ts"
 import { dispatch } from '@flue/runtime';
@@ -373,7 +373,7 @@ app.post('/api/approvals/:conversationId', async (c) => {
 export default app;
 ```
 
-A [channel](/docs/guide/channels/) handles its provider's button-click webhook the same way: verify it, then dispatch the same signal.
+A [channel](/docs/guide/channels/) handles its provider's button-click webhook the same way. It verifies the webhook, then dispatches the same signal.
 
 On the client, a pending request is an ordinary `dynamic-tool` part whose `output.status` is `pending_approval`. The part's `input` holds the arguments to show the approver. The decision signal carries `approvalId` in its attributes, so a request is decided once a message with that attribute appears:
 
@@ -424,11 +424,11 @@ export function Approvals({ conversationId }: { conversationId: string }) {
 
 Things to keep in mind when adapting the pattern:
 
-- **Make `execute` idempotent.** `useAgentStart` callbacks are at-least-once: a crash while one runs re-runs it on the next attempt. Pass `approvalId` to the external system as an idempotency key, as `releases.publish` does above.
-- **The request ends the response without a reply.** `terminate: true` stops the model before it writes any text, so the approval card is what the user sees. Leave `terminate` off if you'd rather the model say it is waiting; the call still won't run until approved.
+- **Make `execute` idempotent.** `useAgentStart` callbacks are at-least-once. A crash while one runs re-runs it on the next attempt. Pass `approvalId` to the external system as an idempotency key, as `releases.publish` does above.
+- **The request ends the response without a reply.** `terminate: true` stops the model before it writes any text, so the approval card is what the user sees. Leave `terminate` off if you'd rather the model say it is waiting. The call still won't run until approved.
 - **Decide what happens with no person present.** A conversation started by a [schedule](/docs/guide/schedules/) or a webhook may have nobody watching. Use `needsApproval`, or a check on `useDelivery()`, to deny or skip those calls rather than leaving them pending.
 - **Requests don't expire on their own.** They stay in persistent state until decided. To expire them, have a scheduled job dispatch a `deny` decision for requests older than your limit.
-- **The transcript records two steps.** The original tool call keeps its `pending_approval` result, and the real outcome arrives later as a `tool-approval-result` signal.
+- **The transcript records two steps.** The original tool call keeps its `pending_approval` result, and the actual outcome arrives later as a `tool-approval-result` signal.
 
 [MCP tool annotations](/docs/guide/mcp/) such as `destructiveHint` can feed `needsApproval` for tools from a server you trust. They are hints supplied by the server, so use them to require approval, never to skip it.
 
@@ -436,7 +436,7 @@ Things to keep in mind when adapting the pattern:
 
 A tool's arguments are model-selected inputs, not an authorization boundary. Your application should decide which customer, account, repository, or credential a tool can use, then let the model select only values within that boundary.
 
-For an agent that receives dispatched, per-customer events — a support-system webhook, a chat platform message — carry the authorized identifier your application already validated in the delivered signal's `attributes`, and read it with `useDelivery()` rather than trusting a model-supplied value:
+For an agent that receives dispatched, per-customer events, such as a support-system webhook or a chat platform message, carry the authorized identifier your application already validated in the delivered signal's `attributes`, and read it with `useDelivery()` rather than trusting a model-supplied value:
 
 ```ts title="src/agents/customer-orders.ts"
 'use agent';
@@ -463,18 +463,18 @@ export function CustomerOrders() {
 }
 ```
 
-The model may choose an order ID to look up, but it cannot choose the customer used in the query — `customerId` comes from the delivered signal's `attributes`, set by the trusted code that called `dispatch(...)`. Your route or dispatching code must still verify the caller before attaching that identifier; see [Agents](/docs/guide/building-agents/) and [Routing](/docs/guide/routing/).
+The model may choose an order ID to look up, but it cannot choose the customer used in the query. `customerId` comes from the delivered signal's `attributes`, set by the trusted code that called `dispatch(...)`. Your route or dispatching code must still verify the caller before attaching that identifier. See [Agents](/docs/guide/building-agents/) and [Routing](/docs/guide/routing/).
 
-The same principle applies everywhere a tool touches something the model shouldn't select: inside a [harness tool](#harness-tools), and in tools that wrap a provider SDK, where trusted code binds the token, repository, or destination — through a closure or configuration — and the tool exposes only the narrow action. See [Use provider SDKs](/docs/guide/channels/#use-provider-sdks) in the Channels guide for that pattern; avoid generic provider tools that expose arbitrary destinations or API methods unless the application has an explicit authorization design for them.
+The same principle applies everywhere a tool touches something the model shouldn't select. This includes [harness tools](#harness-tools) and tools that wrap a provider SDK. In those tools, trusted code binds the token, repository, or destination through a closure or configuration, and the tool exposes only the narrow action. See [Use provider SDKs](/docs/guide/channels/#use-provider-sdks) in the Channels guide for that pattern. Avoid generic provider tools that expose arbitrary destinations or API methods unless the application has an explicit authorization design for them.
 
 ## Connect MCP servers
 
-Remote [MCP](https://modelcontextprotocol.io) servers plug into this same tool set: `useMcpConnection(...)` declares a server, and the runtime mounts its tools as `mcp__<server>__<tool>` entries alongside your `useTool` mounts. See the [MCP guide](/docs/guide/mcp/) for connecting, choosing which tools to mount, authentication, and connecting at module scope.
+Remote [MCP](https://modelcontextprotocol.io) servers plug into this same tool set. `useMcpConnection(...)` declares a server, and the runtime mounts its tools as `mcp__<server>__<tool>` entries alongside your `useTool` mounts. See the [MCP guide](/docs/guide/mcp/) for connecting, choosing which tools to mount, authentication, and connecting at module scope.
 
 ## Next steps
 
 - [Agent Hooks](/docs/guide/agent-hooks/) — the hook model that `useTool` belongs to, including persistent state and custom hooks.
-- [Agent API](/docs/reference/agent-api/) — the full `defineTool`, `useTool`, `ToolContext`, and harness contracts.
+- [Agent API](/docs/reference/agent-api/) — the full `defineTool`, `useTool`, `ToolContext`, and harness reference.
 - [Sandboxes](/docs/guide/sandboxes/) — the environment that brings the built-in file and shell tools.
 - [Subagents](/docs/guide/subagents/) — delegate focused work through the built-in `task` tool.
 - [Durability](/docs/guide/durability/) — how conversations, state, and durable tool steps are recovered.

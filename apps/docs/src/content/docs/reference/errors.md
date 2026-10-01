@@ -4,7 +4,7 @@ description: The FlueError hierarchy, stable error type codes, the HTTP error en
 lastReviewedAt: 2026-07-30
 ---
 
-Typed framework failures are `FlueError` subclasses with a stable machine-readable `type` code, plus two plain-`Error` classes documented below (`AgentRunError` and `ResultUnavailableError`). Cancellation rejects with a `DOMException` named `AbortError`. Misuse of programmatic entry points (calling `dispatch()` or `init()` before the runtime is configured, an empty instance id) throws plain `Error`s whose `[flue]`-prefixed messages are prose, not API. Error classes are exported from `@flue/runtime`, with two exceptions: the Cloudflare binding surface lives on `@flue/runtime/cloudflare`, and the persistence store classes live on `@flue/runtime/adapter`.
+Typed framework failures are `FlueError` subclasses with a stable machine-readable `type` code, plus two plain-`Error` classes documented below (`AgentRunError` and `ResultUnavailableError`). Cancellation rejects with a `DOMException` named `AbortError`. Misuse of programmatic entry points (calling `dispatch()` or `init()` before the runtime is configured, an empty instance id) throws plain `Error`s whose `[flue]`-prefixed messages are prose, not API. Error classes are exported from `@flue/runtime`, except the Cloudflare binding classes, which live on `@flue/runtime/cloudflare`, and the persistence store classes, which live on `@flue/runtime/adapter`.
 
 The Flue Agent SDK's error classes (`FlueApiError`, `FlueExecutionError`, stream errors) are documented in the [SDK errors reference](/docs/sdk/errors/). They wrap the same wire envelope and settlement shapes defined on this page.
 
@@ -22,10 +22,10 @@ class FlueError extends Error {
 
 The base class for framework-typed errors. Distinguish Flue failures from arbitrary errors with `err instanceof FlueError`, then narrow with a concrete subclass or the `type` field.
 
-- `type` — stable snake_case identifier, one constant per subclass. This is the machine-readable contract; match on it in code and telemetry.
-- `message` — one caller-safe sentence. Prose, not API: message strings may change between versions.
+- `type` — stable snake_case identifier, one constant per subclass. This is the machine-readable identifier. Match on it in code and telemetry.
+- `message` — one caller-safe sentence. Message strings are prose, not API, and may change between versions.
 - `details` — longer caller-safe prose about the request and what the caller can do. Always rendered on the wire. `''` when the class has nothing further to say.
-- `dev` — developer-audience prose: available alternatives, filesystem layout, source-level fix instructions. Rendered on the wire only in local development. `''` when the class has nothing dev-specific.
+- `dev` — developer-audience prose, such as available alternatives, filesystem layout, and source-level fix instructions. Rendered on the wire only in local development. `''` when the class has nothing dev-specific.
 - `meta` — optional structured data. Set only by the subclasses documented as carrying it; included on the wire in every mode when set.
 - `cause` — the underlying error when wrapping. Logged server-side; never sent over the wire.
 - `name` — not a discriminator. Most subclasses report `'FlueError'` or `'FlueHttpError'`; only some override it. Use `instanceof` or `type`.
@@ -48,11 +48,11 @@ Every error response from an agent route, a mounted `createAgentRouter()` app, o
 }
 ```
 
-- `type`, `message`, `details` — always present.
-- `dev` — present only when the server runs in local development (`flue dev`, `flue run`) and the error class populated it. Its presence is not a reliable mode signal: errors whose class set `dev: ''` omit the field in every mode.
+- `type`, `message`, `details`: always present.
+- `dev` — present only when the server runs in local development (`flue dev`, `flue run`) and the error class populated it. Its presence is not a reliable mode signal, because errors whose class set `dev: ''` omit the field in every mode.
 - `meta` — present whenever the error class set it, in development and production alike.
-- `ref` — a server-minted correlation ref (`err_` + ULID), present exactly when the server logged the error (the two 500-class renders below). The same value is sent as a `flue-error-ref` response header and prefixes the matching server-side log line. Never present on unlogged caller-mistake (4xx) responses.
-- `cause` and stack traces — never present.
+- `ref` — a server-minted correlation ref (`err_` + ULID), present only when the server logged the error (the two 500-class renders below). The same value is sent as a `flue-error-ref` response header and prefixes the matching server-side log line. Never present on unlogged caller-mistake (4xx) responses.
+- `cause` and stack traces: never present.
 
 Status resolution:
 
@@ -62,17 +62,17 @@ Status resolution:
 
 Every error response also carries `content-type: application/json`, `x-content-type-options: nosniff`, and `cross-origin-resource-policy: cross-origin`.
 
-Two route responses deliberately omit the envelope: `HEAD` conversation reads answer errors with status and headers only (no body — the `flue-error-ref` header would still be present on a logged render), and a long-poll read aborted by the client returns status 499 with an empty body. Mid-stream failures after SSE or long-poll headers are sent terminate the stream without an envelope.
+Two route responses omit the envelope. `HEAD` conversation reads answer errors with status and headers only (no body, though the `flue-error-ref` header is still present on a logged render), and a long-poll read aborted by the client returns status 499 with an empty body. Mid-stream failures after SSE or long-poll headers are sent terminate the stream without an envelope.
 
 ### Correlating a production 500
 
-Quote the `ref` (from `error.ref` or the `flue-error-ref` header — the header survives body-less responses and intermediaries that swallow bodies). The matching server-side log line begins `[flue] [err_…]` and carries the full error with its cause chain and stacks; because refs are ULIDs, the ref alone also brackets the time window to search. When the failing request carried a W3C `traceparent`, the log line records it beside the ref, so callers propagating trace context can join the failure into their own tracing. The ref exists only for the synchronous render: a submission that fails _after_ its 202 admission has no ref — its handle is the `submissionId`, shared by the `submission_settled` record, the SDK's `FlueExecutionError.targetId`, and the corresponding `[flue:submission-…]` log lines.
+Quote the `ref` from `error.ref` or the `flue-error-ref` header. The header survives body-less responses and intermediaries that swallow bodies. The matching server-side log line begins `[flue] [err_…]` and carries the full error with its cause chain and stacks. Because refs are ULIDs, the ref alone also brackets the time window to search. When the failing request carried a W3C `traceparent`, the log line records it beside the ref, so callers propagating trace context can join the failure into their own tracing. The ref exists only for the synchronous render. A submission that fails _after_ its 202 admission has no ref. Its handle is the `submissionId`, shared by the `submission_settled` record, the SDK's `FlueExecutionError.targetId`, and the corresponding `[flue:submission-…]` log lines.
 
 ## Route error types
 
 The wire `type` codes agent routes produce, with their status. Only `agent_instance_not_found` and `agent_instance_exists` have importable classes; match the rest on `error.type`. The routes themselves are documented in the [Streaming Protocol Reference](/docs/reference/streaming-protocol/).
 
-- `invalid_request` — 400. Malformed request: bad URL or parameter shapes, an empty instance-id segment, invalid dispatch payloads, a `uid` condition combined with `initialData`, or creation data that fails the agent's `initialDataSchema`. `details` states the specific reason.
+- `invalid_request` — 400. The request is malformed, with bad URL or parameter shapes, an empty instance-id segment, invalid dispatch payloads, a `uid` condition combined with `initialData`, or creation data that fails the agent's `initialDataSchema`. `details` states the specific reason.
 - `invalid_json` — 400. Request body present but not parseable as JSON. `details` includes the parser's report.
 - `unsupported_media_type` — 415. Request body present without a `Content-Type: application/json` header.
 - `method_not_allowed` — 405. Response carries an `Allow` header listing the accepted methods.
@@ -85,9 +85,9 @@ The wire `type` codes agent routes produce, with their status. Only `agent_insta
 - `runtime_unavailable` — 503. The local dev runtime is reloading, draining, or failed to load. Carries `Retry-After: 1` and `meta.state` (`'loading' | 'draining' | 'failed'`); in dev mode `dev` carries the underlying load failure.
 - `internal_error` — 500. The generic redaction for unexpected server errors.
 
-Admission of a send — over HTTP or through `dispatch()` and `init().dispatch()` — also rejects with `type: 'invalid_request'` for payload misuse: a `uid` string condition combined with `initialData`, creation data failing the agent's `initialDataSchema`, or a non-function `agent` argument. That class (`InvalidRequestError`) is not exported; match it with `instanceof FlueError` and the `type` field.
+Admission of a send (over HTTP or through `dispatch()` and `init().dispatch()`) also rejects with `type: 'invalid_request'` when the payload combines a `uid` string condition with `initialData`, carries creation data that fails the agent's `initialDataSchema`, or passes a non-function `agent` argument. That class (`InvalidRequestError`) is not exported; match it with `instanceof FlueError` and the `type` field.
 
-Internal invariant and persistence failures have their own codes, which can appear in a 500 envelope or a settlement error: `conversation_record_invariant` (no importable class), the store codes carried by the `@flue/runtime/adapter` classes ([`AttachmentConflictError`](#attachmentconflicterror), [`AttachmentIntegrityError`](#attachmentintegrityerror), [`ConversationStreamStoreError`](#conversationstreamstoreerror), [`PersistedFormatVersionError`](#persistedformatversionerror)), and `cloudflare_ai_binding_error` ([`CloudflareAIBindingError`](#cloudflareaibindingerror) on `@flue/runtime/cloudflare`).
+Internal invariant and persistence failures have their own codes, and these can appear in a 500 envelope or a settlement error. The codes are `conversation_record_invariant` (no importable class), the store codes carried by the `@flue/runtime/adapter` classes ([`AttachmentConflictError`](#attachmentconflicterror), [`AttachmentIntegrityError`](#attachmentintegrityerror), [`ConversationStreamStoreError`](#conversationstreamstoreerror), [`PersistedFormatVersionError`](#persistedformatversionerror)), and `cloudflare_ai_binding_error` ([`CloudflareAIBindingError`](#cloudflareaibindingerror) on `@flue/runtime/cloudflare`).
 
 Authored routes and middleware in an [`app.ts`](/docs/guide/routing/) own their responses; the envelope and status vocabulary above apply only to framework-owned routes.
 
@@ -100,7 +100,7 @@ class AgentInstanceExistsError extends FlueError {
 }
 ```
 
-A create-only send (`uid: null`) — `dispatch()` or `init().dispatch()` with the condition, or the equivalent HTTP body fields — named an instance that already exists. Raised synchronously at admission; nothing durable is created when it fires. Over HTTP it renders with status 409; programmatically the returned promise rejects with the class instance.
+A create-only send (`uid: null`) through `dispatch()` or `init().dispatch()` with the condition, or the equivalent HTTP body fields, named an instance that already exists. Raised synchronously at admission; nothing durable is created when it fires. Over HTTP it renders with status 409. Programmatically, the returned promise rejects with the class instance.
 
 - `uid` — the existing incarnation's uid, usable directly as the continue condition. `undefined` for instances created before uids shipped. The uid also rides the wire envelope as `meta.uid` (and appears in the `details` prose), so HTTP callers can continue the existing instance without a separate lookup.
 
@@ -110,9 +110,9 @@ A create-only send (`uid: null`) — `dispatch()` or `init().dispatch()` with th
 class AgentInstanceNotFoundError extends FlueError // type: 'agent_instance_not_found', status: 404
 ```
 
-A continue-only send (`uid: '<string>'`) — `dispatch()` or `init().dispatch()` with the condition, or the equivalent HTTP body fields — named an instance that does not exist or whose uid does not match. Both cases produce the same error: to a caller holding a uid condition, the known incarnation is absent either way. Raised synchronously at admission; nothing durable is created when it fires. Over HTTP it renders with status 404; programmatically the returned promise rejects with the class instance. Send without a `uid` to deliver unconditionally.
+A continue-only send (`uid: '<string>'`) through `dispatch()` or `init().dispatch()` with the condition, or the equivalent HTTP body fields, named an instance that does not exist or whose uid does not match. Both cases produce the same error, because to a caller holding a uid condition the known incarnation is absent either way. Raised synchronously at admission; nothing durable is created when it fires. Over HTTP it renders with status 404. Programmatically, the returned promise rejects with the class instance. Send without a `uid` to deliver unconditionally.
 
-Also the rejection of an `init().read()` addressed to an instance that does not exist: a read waits for settlement, and an instance that was never contacted has nothing to settle, so the miss fails fast instead of waiting forever.
+It is also the rejection of an `init().read()` addressed to an instance that does not exist. A read waits for settlement, and an instance that was never contacted has nothing to settle, so the miss fails fast instead of waiting forever.
 
 ## `AgentRunError`
 
@@ -129,7 +129,7 @@ The rejection of an awaited `init().read()` call whose submission settled `faile
 - `submissionId` — the settled submission.
 - `cause` — the settlement's serialized error (the `{ name?, message, type?, details?, meta? }` shape under [Settlement error shape](#settlement-error-shape)) when the settlement carried one.
 
-A `read()` call whose `signal` is already fired rejects with the signal's reason instead of an `AgentRunError` — by default a `DOMException` named `AbortError`. This is a local cancellation of the read only; the submission itself keeps running and settles independently. To durably stop the agent's work, call `abort()`.
+A `read()` call whose `signal` is already fired rejects with the signal's reason instead of an `AgentRunError`. By default the reason is a `DOMException` named `AbortError`. This cancels only the local read. The submission keeps running and settles independently. To durably stop the agent's work, call `abort()`.
 
 ## `AttachmentConflictError`
 
@@ -202,7 +202,7 @@ class InstrumentationAlreadyInstalledError extends FlueError // type: 'instrumen
 class OperationFailedError extends FlueError // type: 'operation_failed'
 ```
 
-A harness operation — `prompt()`, `skill()`, `task()`, `shell()`, or `compact()` on `FlueHarness` and `FlueSession` — ran but did not complete: the underlying model call errored, or a durable input could not be persisted or recovered. `meta` carries `operation` and `reason` (the unwrapped failure text, also embedded in `message`; both are prose, not API).
+A harness operation (`prompt()`, `skill()`, `task()`, `shell()`, or `compact()` on `FlueHarness` and `FlueSession`) ran but did not complete. The underlying model call errored, or a durable input could not be persisted or recovered. `meta` carries `operation` and `reason` (the unwrapped failure text, also embedded in `message`; both are prose, not API).
 
 ## `PersistedFormatVersionError`
 
@@ -211,7 +211,7 @@ A harness operation — `prompt()`, `skill()`, `task()`, `shell()`, or `compact(
 class PersistedFormatVersionError extends FlueError // type: 'persisted_format_version_unsupported'
 ```
 
-The database records a format version this runtime does not support: stamped by a newer Flue version (after a rollback) or carrying an unrecognized version marker. Thrown when the store is opened, at startup. Exported from `@flue/runtime/adapter`, alongside the store contracts it guards; see the [Data Persistence API](/docs/reference/data-persistence-api/). `meta` carries `storedVersion` and `supportedVersion`.
+The database records a format version that this runtime does not support. Either a newer Flue version stamped it (after a rollback), or the version marker is unrecognized. Thrown when the store is opened, at startup. Exported from `@flue/runtime/adapter`, alongside the store contracts it guards; see the [Data Persistence API](/docs/reference/data-persistence-api/). `meta` carries `storedVersion` and `supportedVersion`.
 
 ## `ResultUnavailableError`
 
@@ -241,7 +241,7 @@ A sandbox adapter rejected an operation or option set it does not implement, bef
 class SessionBusyError extends FlueError // type: 'session_busy'
 ```
 
-A harness operation — `prompt()`, `skill()`, `task()`, `shell()`, or `compact()` — was invoked while the session was already running one. Sessions run one operation at a time; open another session for parallel branches.
+A harness operation (`prompt()`, `skill()`, `task()`, `shell()`, or `compact()`) was invoked while the session was already running one. Sessions run one operation at a time; open another session for parallel branches.
 
 ## `SessionNotFoundError`
 
@@ -281,7 +281,7 @@ class SubagentNotDeclaredError extends FlueError // type: 'subagent_not_declared
 class SubmissionAbortedError extends FlueError // type: 'submission_aborted'
 ```
 
-A terminal error a durable submission settles with: it becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). The instance's work was aborted (the route's `POST .../abort`, or the `init()` handle's `abort()`). Abort stops all in-flight and queued work for the instance. Abort is a distinct terminal outcome, not a failure: a submission that already committed its terminal record is never aborted, and an abort that loses the race to a completed response settles as completed.
+A durable submission settles with this terminal error, which becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). The instance's work was aborted (the route's `POST .../abort`, or the `init()` handle's `abort()`). Abort stops all in-flight and queued work for the instance. Abort is a distinct terminal outcome, not a failure. A submission that already committed its terminal record is never aborted, and an abort that loses the race to a completed response settles as completed.
 
 ## `SubmissionInterruptedError`
 
@@ -289,7 +289,7 @@ A terminal error a durable submission settles with: it becomes the `error` of th
 class SubmissionInterruptedError extends FlueError // type: 'submission_interrupted'
 ```
 
-A terminal error a durable submission settles with: it becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). Every processing attempt was interrupted (process crash, restart, shutdown) before the submission's input was applied; the shared attempt budget ran out with no model call ever started. It reflects the agent's `durability` configuration; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model. `meta` carries `phase: 'retry_exhausted_before_input'`, `attemptCount`, and `maxAttempts`.
+A durable submission settles with this terminal error, which becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). Every processing attempt was interrupted (process crash, restart, shutdown) before the submission's input was applied; the shared attempt budget ran out with no model call ever started. It reflects the agent's `durability` configuration; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model. `meta` carries `phase: 'retry_exhausted_before_input'`, `attemptCount`, and `maxAttempts`.
 
 ## `SubmissionRetryExhaustedError`
 
@@ -297,7 +297,7 @@ A terminal error a durable submission settles with: it becomes the `error` of th
 class SubmissionRetryExhaustedError extends FlueError // type: 'submission_retry_exhausted'
 ```
 
-A terminal error a durable submission settles with: it becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). Recovery re-attempted an interrupted submission after input application until `durability.maxAttempts` ran out without a completed response; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model. When terminalization settled tool calls whose outcomes could not be confirmed, `meta.interruptedTools` lists them as `{ name, id }` pairs; each has an explicit interrupted-error outcome in the conversation and was never assumed complete or retried. `meta` also carries `attemptCount` and `maxAttempts`.
+A durable submission settles with this terminal error, which becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). Recovery re-attempted an interrupted submission after input application until `durability.maxAttempts` ran out without a completed response; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model. When terminalization settled tool calls whose outcomes could not be confirmed, `meta.interruptedTools` lists them as `{ name, id }` pairs; each has an explicit interrupted-error outcome in the conversation and was never assumed complete or retried. `meta` also carries `attemptCount` and `maxAttempts`.
 
 ## `SubmissionTimeoutError`
 
@@ -305,7 +305,7 @@ A terminal error a durable submission settles with: it becomes the `error` of th
 class SubmissionTimeoutError extends FlueError // type: 'submission_timeout'
 ```
 
-A terminal error a durable submission settles with: it becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). The submission exceeded `durability.timeoutMs`; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model.
+A durable submission settles with this terminal error, which becomes the `error` of the `submission_settled` record and event (the [settlement error shape](#settlement-error-shape) below) and rejects a waiting settlement observer (`init().read()`, the SDK's `wait()`). The submission exceeded `durability.timeoutMs`; see the [Durability guide](/docs/guide/durability/) for the attempt and timeout model.
 
 ## `ToolInputValidationError`
 
@@ -313,7 +313,7 @@ A terminal error a durable submission settles with: it becomes the `error` of th
 class ToolInputValidationError extends FlueError // type: 'tool_input_validation'
 ```
 
-Model-supplied arguments failed the tool's `input` schema. During a model turn it becomes an error tool result delivered back to the model — the submission continues, and the message is addressed to the model, which may correct the arguments and call again; outside a model turn the error propagates to the caller. `meta` carries `tool` and `issues`.
+Model-supplied arguments failed the tool's `input` schema. During a model turn it becomes an error tool result delivered back to the model. The submission continues, and the message is addressed to the model, which may correct the arguments and call again. Outside a model turn, the error propagates to the caller. `meta` carries `tool` and `issues`.
 
 ## `ToolNameConflictError`
 
@@ -321,7 +321,7 @@ Model-supplied arguments failed the tool's `input` schema. During a model turn i
 class ToolNameConflictError extends FlueError // type: 'tool_name_conflict'
 ```
 
-A tool list contained a duplicate name, or a custom or adapter tool used a framework-reserved name. Raised when the session assembles its tools, before any model call. See the [Tools guide](/docs/guide/tools/) for the authoring surface.
+A tool list contained a duplicate name, or a custom or adapter tool used a framework-reserved name. Raised when the session assembles its tools, before any model call. See the [Tools guide](/docs/guide/tools/) for how to author tools.
 
 ## `ToolOutputSerializationError`
 
@@ -329,7 +329,7 @@ A tool list contained a duplicate name, or a custom or adapter tool used a frame
 class ToolOutputSerializationError extends FlueError // type: 'tool_output_serialization'
 ```
 
-The tool's return value is not JSON-serializable, or the tool returned `undefined` while declaring an `output` schema. During a model turn it becomes an error tool result delivered back to the model — the submission continues; outside a model turn the error propagates to the caller. `meta` carries `tool`; `cause` carries the serialization failure when one exists.
+The tool's return value is not JSON-serializable, or the tool returned `undefined` while declaring an `output` schema. During a model turn it becomes an error tool result delivered back to the model, and the submission continues. Outside a model turn, the error propagates to the caller. `meta` carries `tool`; `cause` carries the serialization failure when one exists.
 
 ## `ToolOutputValidationError`
 
@@ -337,7 +337,7 @@ The tool's return value is not JSON-serializable, or the tool returned `undefine
 class ToolOutputValidationError extends FlueError // type: 'tool_output_validation'
 ```
 
-The tool's return value failed its `output` schema. During a model turn it becomes an error tool result delivered back to the model — the submission continues; outside a model turn the error propagates to the caller. `meta` carries `tool` and `issues`.
+The tool's return value failed its `output` schema. During a model turn it becomes an error tool result delivered back to the model, and the submission continues. Outside a model turn, the error propagates to the caller. `meta` carries `tool` and `issues`.
 
 ## `ValidationIssue`
 
@@ -372,7 +372,7 @@ The `submission_settled` event, the durable settlement record, and the `submissi
 }
 ```
 
-A `FlueError` serializes with its `name`, `message`, `type`, `details`, and `meta`. Any other failure cause is redacted to a generic `internal_error` entry — non-Flue error messages never reach settlement records or the wire. Settlement errors never carry a stack.
+A `FlueError` serializes with its `name`, `message`, `type`, `details`, and `meta`. Any other failure cause is redacted to a generic `internal_error` entry. Non-Flue error messages never reach settlement records or the wire. Settlement errors never carry a stack.
 
 ## `WORKERS_AI_OVERFLOW_MARKER` and `RETRYABLE_INTERRUPTION_MARKER`
 
@@ -381,12 +381,12 @@ const WORKERS_AI_OVERFLOW_MARKER = '(request_too_large)';
 const RETRYABLE_INTERRUPTION_MARKER = '(retryable_interruption)';
 ```
 
-Message-string markers used where no typed error object survives — classification reads the persisted assistant error message.
+Message-string markers for cases where no typed error object survives, because classification reads the persisted assistant error message.
 
 - `WORKERS_AI_OVERFLOW_MARKER` — appended to a binding 413 error message; the compaction layer matches it to trigger context-overflow recovery (compact and retry).
 - `RETRYABLE_INTERRUPTION_MARKER` — stamped only by throw sites that can prove the failure was a transient interruption (for example a Workers AI stream ending without an error frame or finish reason); retry classification matches it before falling back to message-pattern heuristics.
 
-Applications that surface provider errors can match or strip these markers. Their string values are the contract.
+Applications that surface provider errors can match or strip these markers. Their string values are stable API.
 
 ## `errorInfo` on live observations
 
@@ -412,7 +412,7 @@ Classification rules, applied to the thrown value:
 - A string → `{ type: '_OTHER', message }`; anything else → `{ type: '_OTHER' }`.
 - `stack` — the throw-site stack, present only when the failure was observed live from a real `Error` instance, never from arbitrary thrown objects.
 
-`errorInfo` appears on failed `tool` observations, failed `operation` observations, and non-completed `submission_settled` observations. Failures of the caller-driven `shell()` bash tool classify to the `type`/`name`/`message` subset only, without `meta` or `stack`. `errorInfo` is in-process only: the durable-shaped `error` fields on `operation` and `compaction` events serialize to `{ name, message }` (plus `type`, `details`, `meta` for `FlueError`s), and durable records never carry `stack` — stacks expose filesystem paths and deployment layout, so they stay out of anything persisted, replayed, or sent over HTTP. See the [Events Reference](/docs/reference/events/) for the observation types and the [Observability guide](/docs/guide/observability/) for subscriber setup.
+`errorInfo` appears on failed `tool` observations, failed `operation` observations, and non-completed `submission_settled` observations. Failures of the caller-driven `shell()` bash tool classify to the `type`/`name`/`message` subset only, without `meta` or `stack`. `errorInfo` is in-process only. The durable-shaped `error` fields on `operation` and `compaction` events serialize to `{ name, message }` (plus `type`, `details`, `meta` for `FlueError`s), and durable records never carry `stack`. Stacks expose filesystem paths and deployment layout, so they stay out of anything persisted, replayed, or sent over HTTP. See the [Events Reference](/docs/reference/events/) for the observation types and the [Observability guide](/docs/guide/observability/) for subscriber setup.
 
 ## Turn error normalization
 
@@ -442,7 +442,7 @@ interface ModelResponse {
 }
 ```
 
-- `finishReason` — the normalized finish vocabulary: `'stop'`, `'length'`, `'toolUse'`, `'error'`, or `'aborted'`. Every provider's native finish value maps into this set.
+- `finishReason` — the normalized finish value, one of `'stop'`, `'length'`, `'toolUse'`, `'error'`, or `'aborted'`. Every provider's native finish value maps into this set.
 - `providerFinishReason` — the provider's exact pre-normalization finish value (for example Workers AI `tool_calls` behind the normalized `toolUse`). Telemetry only; never part of replay or execution identity.
 - `gatewayLogId` — response-level Cloudflare AI Gateway log correlation (`cf-aig-log-id`), read from the response's own headers so concurrent requests cannot cross-attribute it. Telemetry only.
 - `error` — the classified error, present when the request threw or the assistant message carries a provider error message. A bare provider error string classifies as `type: '_OTHER'` with the text in `message`.
@@ -450,10 +450,10 @@ interface ModelResponse {
 
 ## Boundaries
 
-- `type` strings are the stable machine contract. `message`, `details`, and `dev` prose may change between versions; do not parse them.
+- `type` strings are the stable machine-readable API. `message`, `details`, and `dev` prose may change between versions; do not parse them.
 - There is no exported enum or list of error codes; the codes live on the classes and on this page.
 - There is no per-provider error hierarchy. Provider failures normalize into turn results and, terminally, `operation_failed` or the durable submission errors. The one provider-specific class is `CloudflareAIBindingError`.
-- Cancellation is never a `FlueError`: aborted operations and dispatches reject with a `DOMException` named `AbortError`.
+- Aborted operations and dispatches reject with a `DOMException` named `AbortError`. Cancellation is never a `FlueError`.
 - The wire never carries `cause`, stacks, or non-Flue error messages; all three stay in server-side logs.
 - CLI, configuration, and build diagnostics (`flue` commands, `flue.config.*` validation, the Vite plugin) are human-oriented stderr prose without stable machine-readable codes.
 - Application-owned routes and middleware in an authored `app.ts` return whatever statuses and bodies they choose; Flue imposes no envelope or category (for example, no `unauthorized` type) on them.

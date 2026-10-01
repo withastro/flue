@@ -60,11 +60,11 @@ my-project/
 
 `src/` is the canonical source directory for new Flue projects. When integrating Flue into another application or maintaining an existing layout, authored modules may instead live in `.flue/` or at the project root. Flue selects one source directory in this order:
 
-1. `.flue/` — A self-contained Flue source area inside a larger application.
-2. `src/` **(Recommended)** — The recommended layout for new projects.
-3. The project root — A compact layout for small dedicated projects.
+1. `.flue/` — a self-contained Flue source area inside a larger application.
+2. `src/` (recommended): the recommended layout for new projects.
+3. The project root: a compact layout for small dedicated projects.
 
-The first matching directory wins. Flue does not merge layouts: when `.flue/` exists, `app.ts`, `db.ts`, `cloudflare.ts`, and the `'use agent'` scan are resolved from it, not from `src/` or the project root. Authored modules may still import ordinary supporting code from elsewhere in the project.
+The first matching directory wins. Flue does not merge layouts. When `.flue/` exists, `app.ts`, `db.ts`, `cloudflare.ts`, and the `'use agent'` scan are resolved from it, not from `src/` or the project root. Authored modules may still import ordinary supporting code from elsewhere in the project.
 
 Entry module paths (`app.ts`, `db.ts`, `cloudflare.ts`) can be configured explicitly in your `flue.config.ts` file. See [Configuration](/docs/reference/configuration/) for more details.
 

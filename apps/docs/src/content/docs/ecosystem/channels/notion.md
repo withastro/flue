@@ -74,7 +74,7 @@ import { channel as notion } from './channels/notion.ts';
 app.route('/channels/notion', notion.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/notion` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/notion` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -210,8 +210,8 @@ export function pageIdFromInstanceId(id: string): string {
 `switch (event.type)` narrows each modeled variant to its snake-case payload
 shape. The channel widens only `authors`/`accessible_by` to include Notion's
 documented `agent` author type, which the current SDK type omits. A verified
-event whose `type` is newer than the installed SDK is still forwarded — typed
-as the union, with its native fields intact — and handled from the `default`
+event whose `type` is newer than the installed SDK is still forwarded (typed
+as the union, with its native fields intact) and handled from the `default`
 arm. There is no synthetic `type: 'unknown'` variant, `eventType`, or `raw`
 mirror.
 
@@ -240,8 +240,8 @@ The model can request the current page summary, but it cannot select another
 workspace, page, token, or API route. Trusted application code binds the page
 from the verified event.
 
-Notion webhook payloads intentionally describe a change rather than returning
-all current resource state. Decide in application code whether an event should
+Notion webhook payloads describe a change instead of returning all current
+resource state. Decide in application code whether an event should
 trigger a page, block, comment, database, data-source, view, or file fetch.
 Avoid retrieving every changed resource during ingress by default.
 

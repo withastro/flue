@@ -33,7 +33,7 @@ if (process.env.BRAINTRUST_API_KEY) {
 }
 ```
 
-The omitted `compatibleEvent(...)` helper translates current Flue tool and recovery events for the Braintrust version installed by the blueprint. The same module runs on Node.js and Cloudflare; unlike Sentry, Braintrust does not require a separate Cloudflare package or Durable Object wrapper.
+The omitted `compatibleEvent(...)` helper translates current Flue tool and recovery events for the Braintrust version installed by the blueprint. The same module runs on Node.js and Cloudflare. Unlike Sentry, Braintrust does not require a separate Cloudflare package or Durable Object wrapper.
 
 Once configured, agent operations appear as traces with nested spans for model turns, tools, delegated tasks, and compactions.
 
@@ -44,9 +44,9 @@ Once configured, agent operations appear as traces with nested spans for model t
 | `BRAINTRUST_API_KEY`      | **Required for trace export** — Authenticates trace export to Braintrust.               |
 | `BRAINTRUST_PROJECT_NAME` | **Optional** — Chooses the Braintrust project that receives traces. Defaults to `Flue`. |
 
-Never commit the API key; on Cloudflare, store it as a Worker secret rather than a Wrangler `vars` value. When the key is absent, the integration does not initialize or subscribe and the application continues without trace export.
+Never commit the API key. On Cloudflare, store it as a Worker secret rather than a Wrangler `vars` value. When the key is absent, the integration does not initialize or subscribe and the application continues without trace export.
 
-The blueprint installs Braintrust 3.17 and registers its public Flue observer through `observe(...)`. The same source builds on Node.js and Cloudflare through Braintrust's `workerd` export; no separate Cloudflare package or Durable Object wrapper is needed.
+The blueprint installs Braintrust 3.17 and registers its public Flue observer through `observe(...)`. The same source builds on Node.js and Cloudflare through Braintrust's `workerd` export. It needs no separate Cloudflare package or Durable Object wrapper.
 
 Braintrust also provides a Node import hook for Node-only auto-instrumentation. The generated manual observer is the portable path for projects that may target either runtime.
 

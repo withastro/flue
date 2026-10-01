@@ -4,13 +4,13 @@ description: Understand the Node.js-specific runtime behavior and APIs for Flue 
 lastReviewedAt: 2026-07-21
 ---
 
-The Node.js target builds your agents as a standard Node.js server. The built server runs anywhere Node runs: a local machine, a container, a VM, a CI runner, or a managed hosting service. Node is also the target where agents can operate directly on the host filesystem and shell through `local()`.
+The Node.js target builds your agents as a standard Node.js server. The built server runs anywhere Node runs, such as a local machine, a container, a VM, a CI runner, or a managed hosting service. Node is also the target where agents can operate directly on the host filesystem and shell through `local()`.
 
 For a deployment walkthrough, see [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/). To run agents on a cron schedule, see [Schedules](/docs/guide/schedules/).
 
 ## The built server
 
-[Deploy](/docs/guide/deploy/) explains how Vite builds your application — the `app.ts` route map plus every scanned [`'use agent'` module](/docs/guide/building-agents/#use-agent-directive) — into a self-starting server entry at `dist/server.mjs` (plus the non-listening `dist/app.mjs` chunk it imports — what `vite preview` serves, and what a custom host can import to embed the application in its own server):
+[Deploy](/docs/guide/deploy/) explains how Vite builds your application (the `app.ts` route map plus every scanned [`'use agent'` module](/docs/guide/building-agents/#use-agent-directive)) into a self-starting server entry at `dist/server.mjs`. The server entry imports a non-listening `dist/app.mjs` chunk. `vite preview` serves that chunk, and a custom host can import it to embed the application in its own server:
 
 ```bash
 vite build
@@ -23,14 +23,14 @@ The build externalizes your application dependencies rather than bundling them. 
 
 ## Local development
 
-`vite dev` loads `app.ts` through Vite's module graph and serves it on Vite's own server (default port `5173`). Everything Vite gives you applies: instant reload on edits, `--port`, environment handling. Flue additionally:
+`vite dev` loads `app.ts` through Vite's module graph and serves it on Vite's own server (default port `5173`). All of Vite's dev features apply, including instant reload on edits, `--port`, and environment handling. Flue also:
 
-- watches for `'use agent'` changes — adding or removing a marked module, or adding and removing agent exports, updates the registered agent set without a manual restart;
-- restarts the dev server when `flue.config.*` changes;
-- loads your project's `.env` file set (`.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`) into the application's environment, shell-exported values winning — model-provider keys work without a shell export;
-- applies permissive dev CORS defaults (reflected origin with credentials, plus the durable-stream coordination headers) so a separately served SPA can talk to it. Deployed servers keep CORS as an application concern.
+- Watches for `'use agent'` changes. Adding or removing a marked module, or adding and removing agent exports, updates the registered agent set without a manual restart.
+- Restarts the dev server when `flue.config.*` changes.
+- Loads your project's `.env` file set (`.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`) into the application's environment, with shell-exported values taking precedence. Model-provider keys work without a shell export.
+- Applies permissive dev CORS defaults (reflected origin with credentials, plus the durable-stream coordination headers) so a separately served SPA can talk to it. Deployed servers keep CORS as an application concern.
 
-`vite preview` serves the built artifact: it imports `dist/app.mjs` natively — no Vite transformation — so what preview serves is exactly what `node dist/server.mjs` would serve, including production persistence defaults and the real process environment. Run `vite build` first; preview fails with that guidance when no artifact exists. One local-tooling difference from the raw artifact: preview defaults to the same permissive CORS policy as `vite dev` (override with Vite's `preview.cors`), so separate-origin local clients work against it; `node dist/server.mjs` has no CORS layer at all.
+`vite preview` serves the built artifact. It imports `dist/app.mjs` natively, with no Vite transformation, so preview serves the same application `node dist/server.mjs` would serve, including production persistence defaults and the real process environment. Run `vite build` first. When no artifact exists, preview fails and tells you to build. Unlike the raw artifact, preview defaults to the same permissive CORS policy as `vite dev` (override with Vite's `preview.cors`), so separate-origin local clients work against it. `node dist/server.mjs` has no CORS layer at all.
 
 ## State and durability
 
@@ -61,7 +61,7 @@ export function RepositoryReviewer() {
 
 `local()` uses `process.cwd()` as the working directory by default. Shell commands run through the host shell via `child_process`, and file operations read and write the real filesystem.
 
-Only shell-essential environment variables are exposed to the agent's shell by default. API keys, tokens, and credentials are deliberately excluded. Pass specific values through `env` when a command needs them:
+By default, only shell-essential environment variables are exposed to the agent's shell. API keys, tokens, and credentials are excluded. Pass specific values through `env` when a command needs them:
 
 ```ts
 export function RepositoryReviewer() {
@@ -87,9 +87,9 @@ See the Ecosystem [Sandboxes](/docs/ecosystem/#sandboxes) catalog for available 
 Local development loads your project's `.env` files automatically, with shell-exported values taking precedence:
 
 - [`flue run`](/docs/cli/run/) loads the project-root `.env`; use `--env <path>` to select one alternate file.
-- `vite dev` loads Vite's standard file set from the project root: `.env`, `.env.local`, `.env.<mode>`, and `.env.<mode>.local`.
+- `vite dev` loads Vite's standard file set from the project root, which is `.env`, `.env.local`, `.env.<mode>`, and `.env.<mode>.local`.
 
-The built server is different: `node dist/server.mjs` reads only the environment supplied when it starts, because deployed environments own their configuration:
+The built server does not load `.env` files. `node dist/server.mjs` reads only the environment supplied when it starts, because deployed environments own their configuration:
 
 ```bash
 # Production
@@ -111,7 +111,7 @@ function local(options?: LocalSandboxOptions): SandboxFactory;
 
 Creates a sandbox factory that binds directly to the host filesystem and shell. Attach it in the agent function with `useSandbox(local())`.
 
-**`LocalSandboxOptions`:**
+`LocalSandboxOptions`:
 
 - `cwd` — working directory. Defaults to `process.cwd()`.
 - `env` — additional environment variables layered on top of the default shell-essential allowlist. Set a key to `undefined` to remove a default. Per-exec `env` in shell calls layers on top of this.

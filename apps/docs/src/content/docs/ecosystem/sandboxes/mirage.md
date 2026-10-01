@@ -16,7 +16,7 @@ flue add sandbox mirage
 
 ## Overview
 
-The Mirage blueprint installs `@struktoai/mirage-node` for Node or `@struktoai/mirage-browser` for Cloudflare when needed, then creates `sandboxes/mirage.ts` in your source-root. The generated adapter accepts an application-created `Workspace`; resource mounts, credentials, writable boundaries, and lifetime remain application-owned.
+The Mirage blueprint installs `@struktoai/mirage-node` for Node or `@struktoai/mirage-browser` for Cloudflare when needed, then creates `sandboxes/mirage.ts` in your source-root. The generated adapter accepts an application-created `Workspace`. Resource mounts, credentials, writable boundaries, and lifetime remain application-owned.
 
 ```ts title="<source-root>/sandboxes/mirage.ts (abridged)"
 // flue-blueprint: sandbox/mirage@1
@@ -124,18 +124,18 @@ export function mirage(workspace: MirageWorkspace, options?: MirageAdapterOption
 }
 ```
 
-Pass `mirage(workspace)` as an agent's `sandbox` to expose mounted resources through a Mirage session keyed by the Flue context id. File stats preserve Mirage's unknown size or modification time by omitting those fields; `timeoutMs` creates a millisecond timeout signal, caller cancellation takes precedence, and only timeout cancellation becomes an exit-code-124 result. Mirage's direct filesystem API does not implement recursive or force removal, so the adapter rejects either option before mutation.
+Pass `mirage(workspace)` as an agent's `sandbox` to expose mounted resources through a Mirage session keyed by the Flue context id. File stats preserve Mirage's unknown size or modification time by omitting those fields. `timeoutMs` creates a millisecond timeout signal, caller cancellation takes precedence, and only timeout cancellation becomes an exit-code-124 result. Mirage's direct filesystem API does not implement recursive or force removal, so the adapter rejects either option before mutation.
 
 ## Configure
 
-| Requirement                              | Purpose                                                                                   |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@struktoai/mirage-node` package         | **Required on Node.js** — Provides Node-compatible Mirage Workspace resources.            |
-| `@struktoai/mirage-browser` package      | **Required on Cloudflare** — Provides browser-compatible Workspace resources only.        |
-| Application-owned resource configuration | **Required** — Defines mounts, credentials, writable boundaries, and lifetime.            |
-| Environment-variable credentials         | **Not required** — Mirage resource credentials are configured by the application instead. |
+| Requirement                              | Purpose                                                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `@struktoai/mirage-node` package         | **Required on Node.js** — Provides Node-compatible Mirage Workspace resources.           |
+| `@struktoai/mirage-browser` package      | **Required on Cloudflare** — Provides browser-compatible Workspace resources only.       |
+| Application-owned resource configuration | **Required** — Defines mounts, credentials, writable boundaries, and lifetime.           |
+| Environment-variable credentials         | **Not required.** Mirage resource credentials are configured by the application instead. |
 
-The generated adapter uses Mirage's shared workspace contract. Some Mirage resources, such as SSH- or database-oriented Node resources, require the Node runtime and must not be imported into a Cloudflare build.
+The generated adapter uses Mirage's shared workspace interface. Some Mirage resources, such as SSH- or database-oriented Node resources, require the Node runtime and must not be imported into a Cloudflare build.
 
 ## Choose this adapter when
 

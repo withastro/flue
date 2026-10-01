@@ -12,11 +12,11 @@ flue init [directory] [--target <node|cloudflare>] [--deploy] [--force]
 
 ## Description
 
-`flue init` scaffolds a complete Flue project skeleton: `flue.config.ts`, `package.json`, TypeScript setup, a Hello agent, and — depending on your choices — the HTTP server files. Two choices shape the skeleton: the build target (`node` or `cloudflare`) and whether to include the HTTP server setup. Both are resolved from flags when passed, and prompted for interactively otherwise.
+`flue init` scaffolds a complete Flue project skeleton with `flue.config.ts`, `package.json`, TypeScript setup, a Hello agent, and (depending on your choices) the HTTP server files. The build target (`node` or `cloudflare`) and the choice to include the HTTP server setup determine the skeleton. Both are resolved from flags when passed, and prompted for interactively otherwise.
 
 `[directory]` is the directory to scaffold into, resolved from the current working directory and created (with parents) when it does not exist. It defaults to the current directory. The directory's basename, lowercased and restricted to `[a-z0-9-]`, becomes the `package.json` name and (for the Cloudflare target) the Worker name; a basename with no valid characters falls back to `my-flue-app`.
 
-`flue init` writes files only — it does not install dependencies. The printed next steps (and the generated README) begin with `npm install`.
+`flue init` writes files only. It does not install dependencies. The printed next steps (and the generated README) begin with `npm install`.
 
 ## Options
 

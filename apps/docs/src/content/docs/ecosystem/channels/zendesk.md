@@ -84,7 +84,7 @@ import { channel as zendesk } from './channels/zendesk.ts';
 app.route('/channels/zendesk', zendesk.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/zendesk` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/zendesk` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -347,9 +347,9 @@ export function Assistant() {
 Assistant.initialData = initialData;
 ```
 
-`initialData` is the instance's creation data: recorded once when the event creates
-the instance and ignored afterward, so the channel passes it on every
-dispatch. The agent reads it with `useInitialData()`, validated against the
+`initialData` is the instance's creation data, recorded once when the event
+creates the instance and ignored afterward. The channel therefore passes it on
+every dispatch. The agent reads it with `useInitialData()`, validated against the
 agent's `initialData` static, instead of parsing the instance id.
 
 The tool accepts no account, ticket id, API host, or credential from the model.
@@ -400,17 +400,17 @@ with the provider's snake_case field names:
 - provider-native `detail` and `event` JSON objects.
 
 An index signature forwards any authenticated future or unmodeled fields, so
-verified future event families remain observable. JSON is parsed losslessly:
-unsafe integer literals retain their exact decimal spelling as strings, and the
+verified future event families remain observable. JSON is parsed losslessly,
+so unsafe integer literals retain their exact decimal spelling as strings, and the
 top-level integer `account_id` is normalized to a decimal string.
 
-`delivery` is the unsigned routing metadata read from the request headers:
-`webhookId`, `invocationId`, and `signatureTimestamp`. Zendesk's HMAC does not
+`delivery` holds the unsigned routing metadata `webhookId`, `invocationId`, and
+`signatureTimestamp`, read from the request headers. Zendesk's HMAC does not
 cover these headers, so treat them as provider routing context, not
 authorization.
 
-Zendesk's current documentation is inconsistent about ticket delivery setup:
-the event catalog and Support UI documentation list ticket subscriptions,
+Zendesk's current documentation is inconsistent about ticket delivery setup.
+The event catalog and Support UI documentation list ticket subscriptions,
 while the developer webhook guide still recommends triggers or automations for
 ticket activity. Use the grouped ticket example only when the account exposes
 those event subscriptions. Custom trigger payloads are developer-authored and
@@ -430,9 +430,9 @@ JSON response. A normal Hono or Fetch `Response` passes through unchanged. A
 thrown callback or unsupported return value fails closed with retryable `409`.
 
 Zendesk allows 12 seconds for the complete request. The channel does not enforce
-a deadline, because racing the callback against a timer cannot actually cancel
-JavaScript work that has already started — the timed-out work keeps running while
-a misleading failure is returned. Instead, admit durable work promptly (for
+a deadline, because racing the callback against a timer cannot cancel
+JavaScript work that has already started. The timed-out work keeps running while
+the channel returns a misleading failure. Instead, admit durable work promptly (for
 example `dispatch(...)` then return) and rely on idempotency rather than
 blocking on slow operations before acknowledging.
 

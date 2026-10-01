@@ -1,12 +1,12 @@
 ---
 title: CLI
-description: The flue command-line interface — invocation, command catalog, global flags, and exit codes.
+description: Invocation, command catalog, global flags, and exit codes for the flue command-line interface.
 lastReviewedAt: 2026-07-21
 ---
 
 The `flue` CLI ships in the `@flue/cli` package as a single `flue` binary. It scaffolds projects, runs one agent module locally, fetches integration blueprints, and reads the documentation bundled with your installed version.
 
-The CLI is not the build tool. Dev servers and production builds are owned by [Vite](/docs/guide/deploy/): `vite dev` and `vite build`, with the `flue()` plugin from `@flue/vite` in `vite.config.ts`.
+The CLI is not the build tool. [Vite](/docs/guide/deploy/) owns dev servers and production builds through `vite dev` and `vite build`, with the `flue()` plugin from `@flue/vite` in `vite.config.ts`.
 
 ## Invocation
 
@@ -24,13 +24,13 @@ npx flue run src/agents/assistant.ts -m "Say hello"
 
 ## Commands
 
-- [`flue init [directory]`](/docs/cli/init/) — scaffold a starter Flue project, prompting for the build target and server setup when flags are omitted.
-- [`flue run <path>`](/docs/cli/run/) — run one agent module locally without a server: submit one message, stream the turn, print the reply, exit.
-- [`flue add [kind] [name|url]`](/docs/cli/add/) — fetch a blueprint implementation guide for a coding agent to follow; with no arguments, list the available blueprints.
+- [`flue init [directory]`](/docs/cli/init/): scaffold a starter Flue project, prompting for the build target and server setup when flags are omitted.
+- [`flue run <path>`](/docs/cli/run/) — run one agent module locally without a server. It submits one message, streams the turn, prints the reply, and exits.
+- [`flue add [kind] [name|url]`](/docs/cli/add/): fetch a blueprint implementation guide for a coding agent to follow; with no arguments, list the available blueprints.
 - [`flue update <kind> <name|url>`](/docs/cli/update/) — fetch the same blueprint guide for updating an existing integration.
-- [`flue docs [read|search]`](/docs/cli/docs/) — list the bundled documentation pages, print one as markdown, or search them.
+- [`flue docs [read|search]`](/docs/cli/docs/): list the bundled documentation pages, print one as markdown, or search them.
 
-Each command page is the reference for that command's arguments, flags, and output. Every command prints its primary payload to stdout and everything else — prompts, streaming output, errors — to stderr, so piping stdout is always safe.
+Each command page is the reference for that command's arguments, flags, and output. Every command prints its primary payload to stdout and everything else (prompts, streaming output, errors) to stderr, so piping stdout is always safe.
 
 ## Global flags
 

@@ -1,10 +1,10 @@
 ---
 title: Workflows
-description: Driving agents from programs — one-shot CLI runs and CI jobs, standalone scripts, the SDK, and durable workflows.
+description: Driving agents from programs with one-shot CLI runs and CI jobs, standalone scripts, the SDK, and durable workflows.
 lastReviewedAt: 2026-07-21
 ---
 
-In Flue, a workflow is any script or program that runs an agent. Workflows are not a Flue feature per se — they are just a useful pattern we've found for referring to all of the different ways that you might use Flue to build scripted automations outside of the usual deployed "chatbot" agent experience.
+In Flue, a workflow is any script or program that runs an agent. Workflows are not a Flue feature. The term is shorthand we use for all the ways you might use Flue to build scripted automations outside of the usual deployed "chatbot" agent experience.
 
 To learn how to deploy an agent, visit the [Deploy](/docs/guide/deploy/) guide.
 
@@ -19,11 +19,11 @@ The right approach to programmable automations will usually depend on where the 
 | [The Flue Agent SDK](#the-flue-agent-sdk) | You need to initialize and control a hosted agent over HTTP. Best for talking (or listening) to deployed production agents.                                                             |
 | [Durable Workflows](#durable-workflows)   | You need to initialize and control a hosted agent from a hosted runtime, and need durability guarantees. Best for multi-step orchestration and products that must survive interruption. |
 
-These approaches are not mutually exclusive: a durable workflow will use the same `start()` and `init()` API as a standalone Node.js script, and a CI job wraps the same `flue run` command you'd type in a terminal.
+You can combine these approaches. A durable workflow will use the same `start()` and `init()` API as a standalone Node.js script, and a CI job wraps the same `flue run` command you'd type in a terminal.
 
 ## `flue run`
 
-The smallest workflow is a single [`flue run`](/docs/cli/run/) invocation. It loads the agent module in the local process, submits one message, prints the final reply to stdout, and exits when the run settles — the exit code reports success or failure.
+The smallest workflow is a single [`flue run`](/docs/cli/run/) invocation. It loads the agent module in the local process, submits one message, prints the final reply to stdout, and exits when the run settles. The exit code reports success or failure.
 
 ```bash
 flue run src/agents/triage.ts --message "Triage issue 17307." --id issue-17307
@@ -62,7 +62,7 @@ See the [`flue run` reference](/docs/cli/run/) for agent selection, creation dat
 
 ## The Flue JS API
 
-When your workflow needs more than what `flue run` can offer — loops, error handling, or data structures — write a Node.js script instead. [`start()`](/docs/guide/building-agents/#standalone-scripts) boots the Flue runtime inside your own process, with no server and no `app.ts`, and [`init()`](/docs/reference/agent-api/#init) returns a handle to an agent conversation. The handle's `dispatch()` submits a message and resolves with its durable receipt; `read()` awaits the settled reply:
+When your workflow needs more than `flue run` can offer, such as loops, error handling, or data structures, write a Node.js script instead. [`start()`](/docs/guide/building-agents/#standalone-scripts) boots the Flue runtime inside your own process, with no server and no `app.ts`, and [`init()`](/docs/reference/agent-api/#init) returns a handle to an agent conversation. The handle's `dispatch()` submits a message and resolves with its durable receipt. `read()` awaits the settled reply:
 
 ```ts title="scripts/nightly.ts"
 import { init } from '@flue/runtime';
@@ -80,9 +80,9 @@ const reply = await reporter.read(receipt);
 console.log(reply.text);
 ```
 
-A failed or aborted run rejects the `read()` with `AgentRunError`, so ordinary `try`/`catch` is all the error handling a script needs. The `db` option decides whether conversations outlive the script: omit it for in-memory state that vanishes with the process, or configure a [database adapter](/docs/guide/database/) so a later run can continue the same conversation.
+A failed or aborted run rejects the `read()` with `AgentRunError`, so ordinary `try`/`catch` is all the error handling a script needs. The `db` option decides whether conversations outlive the script. Omit it for in-memory state that vanishes with the process, or configure a [database adapter](/docs/guide/database/) so a later run can continue the same conversation.
 
-See the [`init()` reference](/docs/reference/agent-api/#init) for the rest of the handle's surface.
+See the [`init()` reference](/docs/reference/agent-api/#init) for the rest of the handle's API.
 
 ## The Flue Agent SDK
 
@@ -103,17 +103,17 @@ const reply = await conversation.read(admission);
 console.log(reply.text);
 ```
 
-The SDK mirrors the handle's model over HTTP: `send()` resolves at admission with the submission's identifiers, and `read()` awaits that submission's settlement and resolves with its reply (throwing `FlueExecutionError` on failure or abort). `read()` also takes a bare submission id, so a process that persisted just the admission can re-attach later — the same recovery story as the handle's `read()`. Choose by where the agents live: use `start()` when your script runs the agents itself, and the SDK when they run in a deployment.
+The SDK mirrors the handle's model over HTTP. `send()` resolves at admission with the submission's identifiers, and `read()` awaits that submission's settlement and resolves with its reply (throwing `FlueExecutionError` on failure or abort). `read()` also takes a bare submission id, so a process that persisted only the admission can re-attach later, the same way it can with the handle's `read()`. Choose by where the agents live. Use `start()` when your script runs the agents itself, and the SDK when they run in a deployment.
 
 ## Durable Workflows
 
-Flue already guarantees a durable outcome for every individual send: once a message is admitted, that submission settles through crashes, restarts, and redeploys — the [Durability](/docs/guide/durability/) guide covers that contract. What Flue does not guarantee is the script _around_ the sends: a workflow that dies between two dispatches re-runs from its start. That is fine for a quick script, but not for a multi-step orchestration that must finish once started.
+Flue already guarantees a durable outcome for every individual send. Once a message is admitted, that submission settles through crashes, restarts, and redeploys. The [Durability](/docs/guide/durability/) guide covers that guarantee. Flue does not guarantee the script _around_ the sends. A workflow that dies between two dispatches re-runs from its start. That is fine for a quick script, but not for a multi-step orchestration that must finish once started.
 
-That gap is what a **durable workflow** fills: a hosted script whose steps checkpoint their results, so it can retry a failed step, resume a run that spans days, and survive restarts without losing its place. [Cloudflare Workflows](https://developers.cloudflare.com/workflows/), [Inngest](https://www.inngest.com/), and [Temporal](https://temporal.io/) are a few of the products built on this primitive, and Flue needs no special integration with any of them — write the durable workflow on your platform of choice and call Flue from it like any other service.
+A **durable workflow** fills that gap. It is a hosted script whose steps checkpoint their results, so it can retry a failed step, resume a run that spans days, and survive restarts without losing its place. [Cloudflare Workflows](https://developers.cloudflare.com/workflows/), [Inngest](https://www.inngest.com/), and [Temporal](https://temporal.io/) are a few of the products built on this model. Flue needs no special integration with any of them. Write the durable workflow on your platform of choice and call Flue from it like any other service.
 
-In the examples below, the dispatch runs in its own workflow step, so the receipt — the durable claim ticket for the submission — is checkpointed the moment it exists, and a second step reads the settled reply. A completed dispatch step never re-runs the send, and a read step that crashes re-attaches with the same receipt instead of prompting again.
+In the examples below, the dispatch runs in its own workflow step, so the receipt (the durable claim ticket for the submission) is checkpointed the moment it exists, and a second step reads the settled reply. A completed dispatch step never re-runs the send, and a read step that crashes re-attaches with the same receipt instead of prompting again.
 
-The split also splits any per-step time bound: a 20-minute step timeout becomes up to 40 minutes end-to-end. If the operation carries one deadline, checkpoint it in the dispatch step's result and have the read step enforce the remainder.
+The split also splits any per-step time bound. A 20-minute step timeout becomes up to 40 minutes end-to-end. If the operation carries one deadline, checkpoint it in the dispatch step's result and have the read step enforce the remainder.
 
 ### Example: Cloudflare Workflows
 
@@ -179,16 +179,16 @@ export const nightlyReview = inngest.createFunction(
 );
 ```
 
-The same pattern applies to any other durable workflow engine: in Temporal, the dispatch and the read would each live inside an activity.
+The same pattern applies to any other durable workflow engine. In Temporal, the dispatch and the read would each live inside an activity.
 
 ### Re-attaching after a crash
 
-`read()` holds no in-memory state: settlement and reply are durable conversation records, so any process can read a submission at any later time, and a submission that settled while the workflow was down resolves immediately. That is why the receipt gets its own step above — once the engine has checkpointed it, every retry of the read step re-attaches to the same submission instead of prompting again.
+`read()` holds no in-memory state. Settlement and reply are durable conversation records, so any process can read a submission at any later time, and a submission that settled while the workflow was down resolves immediately. That is why the receipt gets its own step above. Once the engine has checkpointed it, every retry of the read step re-attaches to the same submission instead of prompting again.
 
-The one crash window left is inside the dispatch step itself: the send was admitted, but the step died before checkpointing the receipt. The engine re-runs the step, which sends again — and the instance's send condition decides what that means:
+The one crash window left is inside the dispatch step itself. The send was admitted, but the step died before checkpointing the receipt. The engine re-runs the step, which sends again, and the instance's send condition decides what that means:
 
-- An unconditional send (no `uid`) delivers the duplicate, which joins the live response at a turn boundary; both submissions settle with the same coalesced reply, so the retry's fresh receipt reads the same answer.
-- A create-only send (`uid: null`) rejects the duplicate at admission with `AgentInstanceExistsError` — nothing reaches the agent twice, and the rejection is the workflow's signal to fail the run or fall back.
+- An unconditional send (no `uid`) delivers the duplicate, which joins the live response at a turn boundary. Both submissions settle with the same coalesced reply, so the retry's fresh receipt reads the same answer.
+- A create-only send (`uid: null`) rejects the duplicate at admission with `AgentInstanceExistsError`. Nothing reaches the agent twice, and the rejection is the workflow's signal to fail the run or fall back.
 
 ## Next steps
 

@@ -93,7 +93,7 @@ import { channel as salesforceMarketingCloud } from './channels/salesforce-marke
 app.route('/channels/salesforce-marketing-cloud', salesforceMarketingCloud.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/salesforce-marketing-cloud` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/salesforce-marketing-cloud` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -350,7 +350,7 @@ after setup. Without the handler, unsigned requests receive `401`.
 Flue validates the shape and returns the required empty `200` after the
 handler completes. It does not register callbacks, obtain tokens, or call the
 verification API automatically. Keep this setup call separate from the
-GET-only client above unless the application explicitly needs it.
+GET-only client above unless the application needs it.
 
 ## Signatures and event batches
 
@@ -360,14 +360,14 @@ Signed notifications include:
 x-sfmc-ens-signature: <base64 HMAC-SHA256 digest>
 ```
 
-Marketing Cloud signs the exact body bytes. `signatureKey` is required: it is
+Marketing Cloud signs the exact body bytes. `signatureKey` is required. It is
 the opaque string returned during callback creation and is imported directly as
 UTF-8 HMAC key material. Do not base64-decode it. Only the signature header is
 base64-decoded.
 
 The signed payload is an ordered, nonempty array of at most 1000 events. Each
-event is passed through with Marketing Cloud's own field names and nesting —
-there is no `raw` wrapper and no field projection. Ingress requires only a
+event is passed through with Marketing Cloud's own field names and nesting.
+There is no `raw` wrapper and no field projection. Ingress requires only a
 nonempty `eventCategoryType` on each event; that one field is what makes a batch
 forwardable. Everything else is delivered as ENS sent it:
 
@@ -396,13 +396,13 @@ unsupported (non-serializable) return values produce `500`. A custom `Response`
 outside the acknowledgment range is passed through and can cause redelivery.
 
 Flue imposes no route timeout. The handler is awaited and its result serialized.
-The only ENS deadline is at setup: the unsigned verification POST must be
+The only ENS deadline applies at setup, where the unsigned verification POST must be
 answered `200` within 30 seconds, or callback creation fails. Steady-state
 deliveries have no per-request deadline, but ENS retries any batch it does not
 see acknowledged.
 
 ENS delivery is at least once and retries may continue for up to seven days.
-Admit durable work quickly — dispatch, then return — instead of blocking the
+Admit durable work quickly (dispatch, then return) instead of blocking the
 handler on slow operations, and rely on idempotency. The package does not
 deduplicate or persist events; use application-owned durable state and a
 family-appropriate key before non-idempotent work.

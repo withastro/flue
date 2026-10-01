@@ -4,7 +4,7 @@ description: Choose, tune, and connect the LLM that powers your agent with the u
 lastReviewedAt: 2026-07-21
 ---
 
-Every agent is powered by exactly one LLM at a time, declared with `useModel()` — the single required hook in Flue. This guide covers choosing a model, tuning how it's called, when a change takes effect, supplying provider credentials, and connecting providers Flue doesn't know out of the box.
+Every agent is powered by exactly one LLM at a time, declared with `useModel()`, the only required hook in Flue. This guide covers choosing a model, tuning how it's called, when a change takes effect, supplying provider credentials, and connecting providers that Flue does not include by default.
 
 ## Declaring a model
 
@@ -20,41 +20,41 @@ export function TriageAgent() {
 }
 ```
 
-`useModel()` is a declaration, not a client: it returns nothing, and you never construct an SDK object or pass an API key through your agent code. You name the model; the Flue runtime owns the connection, authentication, streaming, and retries behind it.
+`useModel()` is a declaration. It returns nothing, and you never construct an SDK object or pass an API key through your agent code. You name the model, and the Flue runtime owns the connection, authentication, streaming, and retries behind it.
 
 Two rules:
 
 - **The call is required.** An agent render without a `useModel()` call cannot start.
 - **Call it exactly once per render.** An agent has one model. The _argument_ may change from render to render (more on that [below](#changing-models-mid-conversation)), but the call itself may not disappear or repeat.
 
-The call can live in the agent body or in a [custom hook](/docs/guide/agent-hooks/#custom-hooks) the body calls. The one place it's not available is a subagent render — a delegate's model is set on its `useSubagent()` definition instead, and it inherits the parent's model when unset. See [Subagents](/docs/guide/subagents/).
+The call can live in the agent body or in a [custom hook](/docs/guide/agent-hooks/#custom-hooks) the body calls. The one place it's not available is a subagent render. A delegate's model is set on its `useSubagent()` definition instead, and it inherits the parent's model when unset. See [Subagents](/docs/guide/subagents/).
 
 ## Model specifier
 
-A model specifier is a plain string in `'provider-id/model-id'` format. Everything up to the first `/` names the provider; the rest is the provider's own model ID, which may itself contain slashes:
+A model specifier is a plain string in `'provider-id/model-id'` format. Everything up to the first `/` names the provider. The rest is the provider's own model ID, which may itself contain slashes:
 
 - `anthropic/claude-sonnet-4-6` — provider `anthropic`, model `claude-sonnet-4-6`
 - `openai/gpt-5.5` — provider `openai`, model `gpt-5.5`
 - `openrouter/moonshotai/kimi-k2.6` — provider `openrouter`, model `moonshotai/kimi-k2.6`
 - `cloudflare/@cf/moonshotai/kimi-k2.6` — provider `cloudflare`, model `@cf/moonshotai/kimi-k2.6`
 
-Flue resolves specifiers against the providers registered with the runtime. By default that is the full built-in set from [Pi](https://pi.dev/docs/latest/providers), which ships the major providers — `anthropic`, `openai`, `google`, `amazon-bedrock`, `google-vertex`, `groq`, `mistral`, `xai`, `deepseek`, `cerebras`, `together`, `fireworks`, `openrouter`, and more. Each provider's catalog entries carry the model's wire protocol, endpoint, context-window size, output-token limit, cost rates, reasoning support, and accepted input modalities. That metadata decides when [compaction](#compaction) triggers, whether a [thinking level](#model-reasoning-effort) reaches the wire, and whether the model can accept images.
+Flue resolves specifiers against the providers registered with the runtime. By default that is the full built-in set from [Pi](https://pi.dev/docs/latest/providers), which includes major providers like `anthropic`, `openai`, `google`, `amazon-bedrock`, `google-vertex`, `groq`, `mistral`, `xai`, `deepseek`, `cerebras`, `together`, `fireworks`, `openrouter`, and more. Each provider's catalog entries carry the model's wire protocol, endpoint, context-window size, output-token limit, cost rates, reasoning support, and accepted input modalities. That metadata decides when [compaction](#compaction) triggers, whether a [thinking level](#model-reasoning-effort) reaches the wire, and whether the model can accept images.
 
-To ship only the providers you actually use, list them in the `flue()` plugin config — the generated server entry then imports just those factories, and nothing else enters the build:
+To ship only the providers you use, list them in the `flue()` plugin config. The generated server entry then imports only those factories, and nothing else enters the build:
 
 ```ts title="vite.config.ts"
 flue({ providers: ['anthropic', 'openai'] });
 ```
 
-With a `providers` list set, a specifier naming any other provider fails at resolution — the list is exhaustive, so on the Cloudflare target include `'cloudflare'` when your agents use `cloudflare/...` models. Omit the field to keep the full set. See the [Provider API reference](/docs/reference/provider-api/#the-providers-config) for the exact semantics.
+With a `providers` list set, a specifier naming any other provider fails at resolution. The list is exhaustive, so on the Cloudflare target include `'cloudflare'` when your agents use `cloudflare/...` models. Omit the field to keep the full set. See the [Provider API reference](/docs/reference/provider-api/#the-providers-config) for the details.
 
-An unknown specifier fails fast: the run errors with the unresolved provider and model ID before any request is sent. To teach Flue a specifier no built-in provider serves — a local model, a proxy, a brand-new release — register a provider yourself; see [Custom providers](#custom-providers).
+An unknown specifier fails fast. The run errors with the unresolved provider and model ID before any request is sent. To teach Flue a specifier that no built-in provider serves, such as a local model, a proxy, or a brand-new release, register a provider yourself. See [Custom providers](#custom-providers).
 
-On the Cloudflare target there is one more built-in provider ID: `cloudflare/...` model specifiers run on [Workers AI](#cloudflare-workers-ai-cloudflare-only) with no API key at all.
+On the Cloudflare target there is one more built-in provider ID. `cloudflare/...` model specifiers run on [Workers AI](#cloudflare-workers-ai-cloudflare-only) with no API key.
 
 ## Model reasoning effort
 
-`useModel()` accepts an options object as its second argument with two fields: `thinkingLevel` and `compaction`.
+`useModel()` accepts an options object as its second argument with two fields, `thinkingLevel` and `compaction`.
 
 ```ts
 useModel('anthropic/claude-opus-4-6', {
@@ -63,15 +63,15 @@ useModel('anthropic/claude-opus-4-6', {
 });
 ```
 
-`thinkingLevel` sets the default reasoning effort for the agent's model calls: `'off'`, `'minimal'`, `'low'`, `'medium'`, `'high'`, `'xhigh'`, or `'max'`. When you don't set it, the runtime uses `'medium'`.
+`thinkingLevel` sets the default reasoning effort for the agent's model calls. It accepts `'off'`, `'minimal'`, `'low'`, `'medium'`, `'high'`, `'xhigh'`, or `'max'`. When you don't set it, the runtime uses `'medium'`.
 
-Higher levels increase reasoning depth at the cost of latency and tokens; `'off'` disables extended thinking entirely. The value is a _default_: individual operations may override it — a [subagent definition](/docs/guide/subagents/) can pin its own `thinkingLevel`, and programmatic `harness.prompt(...)` calls accept one per operation.
+Higher levels increase reasoning depth at the cost of latency and tokens. `'off'` disables extended thinking. The value is a _default_, and individual operations may override it. A [subagent definition](/docs/guide/subagents/) can pin its own `thinkingLevel`, and programmatic `harness.prompt(...)` calls accept one per operation.
 
 Thinking only reaches the wire for models marked reasoning-capable. Catalog models carry that flag already, but if you register a custom provider and skip its `reasoning` metadata, a forwarded `thinkingLevel` is silently dropped. See [Custom providers](#custom-providers).
 
 ## Compaction
 
-Agent conversations can outlive any context window. As a conversation approaches the model's limit, Flue automatically **compacts** it: older history is folded into a summary while recent messages stay verbatim, and the conversation continues. The `compaction` option tunes that behavior:
+Agent conversations can outlive any context window. As a conversation approaches the model's limit, Flue automatically **compacts** it. Older history is folded into a summary while recent messages stay verbatim, and the conversation continues. The `compaction` option tunes that behavior:
 
 ```ts
 useModel('anthropic/claude-opus-4-6', {
@@ -87,13 +87,13 @@ useModel('anthropic/claude-opus-4-6', {
 });
 ```
 
-All three fields are optional; each overrides a model-aware default. Setting `compaction.model` offloads summarization to a cheaper model.
+All three fields are optional, and each overrides a model-aware default. Setting `compaction.model` offloads summarization to a cheaper model.
 
-Passing `compaction: false` disables _threshold_ compaction — the automatic trigger. Overflow recovery and explicit `harness.compact()` calls still compact when the conversation no longer fits. The full field reference lives at [`CompactionConfig`](/docs/reference/agent-hooks-api/#compactionconfig).
+Passing `compaction: false` disables _threshold_ compaction, which is the automatic trigger. Overflow recovery and explicit `harness.compact()` calls still compact when the conversation no longer fits. The full field reference lives at [`CompactionConfig`](/docs/reference/agent-hooks-api/#compactionconfig).
 
 ## Changing models mid-conversation
 
-The agent function re-renders before every model call, and `useModel()` runs again each time — so the specifier can be computed, not constant. A common pattern is escalation, where durable state moves an agent from a cheap model to a strong one:
+The agent function re-renders before every model call, and `useModel()` runs again each time, so the specifier can be computed. A common pattern is escalation, where durable state moves an agent from a cheap model to a strong one:
 
 ```ts title="src/agents/reviewer.ts"
 'use agent';
@@ -116,13 +116,13 @@ export function Reviewer() {
 }
 ```
 
-The model, thinking level, and compaction settings are **submission-scoped**: the runtime reads them once, when the agent wakes to process an accepted input (a _submission_ — see [Durability](/docs/guide/durability/)). A different value computed by a re-render mid-run latches and takes effect on the _next_ submission, not in the middle of the current one. In the example above, the response where `escalate_review` fires finishes on the cheap model; the conversation's next message runs on the strong one.
+The model, thinking level, and compaction settings are **submission-scoped**. The runtime reads them once, when the agent wakes to process an accepted input (a _submission_; see [Durability](/docs/guide/durability/)). A different value computed by a re-render mid-run latches and takes effect on the _next_ submission, not in the middle of the current one. In the example above, the response where `escalate_review` fires finishes on the cheap model. The conversation's next message runs on the strong one.
 
-There is no per-message model parameter on `dispatch(...)` or the HTTP surface: the model choice belongs to the agent function.
+There is no per-message model parameter on `dispatch(...)` or the HTTP API. The model choice belongs to the agent function.
 
 ## Provider credentials
 
-Model providers authenticate with API keys, and the runtime resolves them from the environment — your agent code never handles them.
+Model providers authenticate with API keys, and the runtime resolves them from the environment. Your agent code never handles them.
 
 ### Local development
 
@@ -134,27 +134,27 @@ OPENAI_API_KEY="sk-..."
 GEMINI_API_KEY="..."
 ```
 
-`anthropic` reads `ANTHROPIC_API_KEY`, `openai` reads `OPENAI_API_KEY`, `google` reads `GEMINI_API_KEY`, `groq` reads `GROQ_API_KEY` — the pattern holds across providers (see [Pi's provider documentation](https://pi.dev/docs/latest/providers) for the full list). Both local entry points load the file for you, with shell-exported values always winning over file values:
+`anthropic` reads `ANTHROPIC_API_KEY`, `openai` reads `OPENAI_API_KEY`, `google` reads `GEMINI_API_KEY`, `groq` reads `GROQ_API_KEY`, and the pattern holds across providers (see [Pi's provider documentation](https://pi.dev/docs/latest/providers) for the full list). Both local entry points load the file for you, with shell-exported values always winning over file values:
 
 - [`flue run`](/docs/cli/run/) loads the project-root `.env`; pass `--env <path>` to select one alternate file.
-- `vite dev` loads Vite's standard file set: `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`.
+- `vite dev` loads Vite's standard file set of `.env`, `.env.local`, `.env.<mode>`, and `.env.<mode>.local`.
 
 Don't commit `.env` files.
 
 ### Deployed environments
 
-Deployed servers read only the real environment — no `.env` loading:
+Deployed servers read only the process environment and do not load `.env` files:
 
-- **Node.js** — supply keys as process environment variables through your host's secret mechanism. See [Node.js target — Environment and secrets](/docs/guide/node-target/#environment-and-secrets).
-- **Cloudflare** — add each key as a Worker secret (`npx wrangler secret put ANTHROPIC_API_KEY`); locally, `.dev.vars` plays the `.env` role. See the [Cloudflare deploy guide](/docs/ecosystem/deploy/cloudflare/).
+- **Node.js** — supply keys as process environment variables through your host's secret mechanism. See [Node.js target: Environment and secrets](/docs/guide/node-target/#environment-and-secrets).
+- **Cloudflare** — add each key as a Worker secret (`npx wrangler secret put ANTHROPIC_API_KEY`). Locally, `.dev.vars` plays the `.env` role. See the [Cloudflare deploy guide](/docs/ecosystem/deploy/cloudflare/).
 
-When the environment-variable convention doesn't fit — a gateway with its own credential, a secret manager that hands you the value in code — declare the credential on a [custom provider](#custom-providers): a provider's `auth.apiKey.resolve()` returns whatever your code produces, and it runs per request, so rotating credentials work too.
+When the environment-variable convention doesn't fit, such as a gateway with its own credential or a secret manager that hands you the value in code, declare the credential on a [custom provider](#custom-providers). A provider's `auth.apiKey.resolve()` returns whatever your code produces, and it runs per request, so rotating credentials work too.
 
 ## Custom providers
 
-Providers are [Pi](https://pi.dev/docs/latest/providers)'s own objects, and Flue accepts them directly: build one with Pi's `createProvider()` (or any provider factory) and hand it to `setProvider()` at module top level in `app.ts`, before any agent runs. Since your code now imports Pi directly, add it to your project's dependencies: `npm install @earendil-works/pi-ai`. Registrations are keyed by the provider's `id`, and each call replaces that ID's previous provider — including a built-in, so overriding `anthropic` is just registering your own provider under that ID. One placement caveat: [`flue run`](/docs/cli/run/) loads only the agent module, never `app.ts` — when an agent must also work under `flue run`, put the registration in the agent module instead.
+Providers are [Pi](https://pi.dev/docs/latest/providers)'s own objects, and Flue accepts them directly. Build one with Pi's `createProvider()` (or any provider factory) and hand it to `setProvider()` at module top level in `app.ts`, before any agent runs. Since your code now imports Pi directly, add it to your project's dependencies with `npm install @earendil-works/pi-ai`. Registrations are keyed by the provider's `id`, and each call replaces that ID's previous provider, including a built-in. To override `anthropic`, register your own provider under that ID. [`flue run`](/docs/cli/run/) loads only the agent module, never `app.ts`, so when an agent must also work under `flue run`, put the registration in the agent module instead.
 
-Any OpenAI- or Anthropic-compatible endpoint works. Here's a local Ollama server:
+Any OpenAI- or Anthropic-compatible endpoint works. This example uses a local Ollama server:
 
 ```ts title="src/app.ts"
 import { createProvider, envApiKeyAuth } from '@earendil-works/pi-ai';
@@ -189,9 +189,9 @@ setProvider(
 useModel('ollama/llama3.1:8b');
 ```
 
-The provider declares its models, and the runtime trusts that metadata: `reasoning: false` means a `thinkingLevel` is silently dropped, `input: ['text']` means attached images are replaced with an "(image omitted)" placeholder, and `contextWindow: 0` reads as unknown, so threshold compaction can't engage.
+The provider declares its models, and the runtime trusts that metadata. `reasoning: false` means a `thinkingLevel` is silently dropped, `input: ['text']` means attached images are replaced with an "(image omitted)" placeholder, and `contextWindow: 0` reads as unknown, so threshold compaction can't engage.
 
-Routing a built-in provider through a gateway or proxy is the same move — register your own provider under the built-in's ID, reusing its catalog models with your endpoint and credential:
+To route a built-in provider through a gateway or proxy, register your own provider under the built-in's ID and reuse its catalog models with your endpoint and credential:
 
 ```ts title="src/app.ts"
 import { createProvider } from '@earendil-works/pi-ai';
@@ -216,11 +216,11 @@ setProvider(
 );
 ```
 
-The agents' specifiers (`anthropic/claude-sonnet-4-6`) don't change; cost, context-window, and capability metadata ride along from the catalog. Pi's provider protocol goes much further when you need it — OAuth, dynamic model discovery, custom wire protocols via the `api` field — all documented in [Pi's provider guide](https://pi.dev/docs/latest/providers#custom-providers). Flue's own contract is in the [Provider API reference](/docs/reference/provider-api/).
+The agents' specifiers (`anthropic/claude-sonnet-4-6`) don't change, and cost, context-window, and capability metadata carry over from the catalog. Pi's provider protocol also supports OAuth, dynamic model discovery, and custom wire protocols via the `api` field. [Pi's provider guide](https://pi.dev/docs/latest/providers#custom-providers) documents these. Flue's side is in the [Provider API reference](/docs/reference/provider-api/).
 
 ## Cloudflare Workers AI (Cloudflare only)
 
-On the Cloudflare target, the `cloudflare` provider ID is registered automatically and runs models on [Workers AI](https://developers.cloudflare.com/workers-ai/) — no API key, no external account; authorization and billing follow the Worker, including the [Workers AI pricing and daily free allocation](https://developers.cloudflare.com/workers-ai/platform/pricing/):
+On the Cloudflare target, the `cloudflare` provider ID is registered automatically and runs models on [Workers AI](https://developers.cloudflare.com/workers-ai/) without an API key or an external account. Authorization and billing follow the Worker, including the [Workers AI pricing and daily free allocation](https://developers.cloudflare.com/workers-ai/platform/pricing/):
 
 ```ts title="src/agents/assistant.ts"
 export function Assistant() {
@@ -240,9 +240,9 @@ Declare the `AI` binding the provider uses in your project's Wrangler configurat
 }
 ```
 
-Everything after `cloudflare/` is passed as the model ID to `env.AI.run(...)`. That can be a Workers AI model ID such as `@cf/moonshotai/kimi-k2.6`, or a binding-supported AI Gateway model ID such as `openai/gpt-5.5` when the Worker should reach that model through Cloudflare's gateway path — `cloudflare/openai/gpt-5.5` bills through Cloudflare, while plain `openai/gpt-5.5` uses Flue's direct OpenAI provider and its API key.
+Everything after `cloudflare/` is passed as the model ID to `env.AI.run(...)`. That can be a Workers AI model ID such as `@cf/moonshotai/kimi-k2.6`, or a binding-supported AI Gateway model ID such as `openai/gpt-5.5` when the Worker should reach that model through Cloudflare's gateway path. `cloudflare/openai/gpt-5.5` bills through Cloudflare, while plain `openai/gpt-5.5` uses Flue's direct OpenAI provider and its API key.
 
-By default, every `cloudflare/...` call routes through Cloudflare's [AI Gateway](https://developers.cloudflare.com/ai-gateway/), giving you caching, logging, and budget controls in the dashboard out of the box. To target a named gateway, tune caching and logging, or opt out, register the `cloudflare` provider yourself in `app.ts` — your registration wins over the generated default:
+By default, every `cloudflare/...` call routes through Cloudflare's [AI Gateway](https://developers.cloudflare.com/ai-gateway/), which gives you caching, logging, and budget controls in the dashboard by default. To target a named gateway, tune caching and logging, or opt out, register the `cloudflare` provider yourself in `app.ts`. Your registration wins over the generated default:
 
 ```ts title="src/app.ts"
 import { setProvider } from '@flue/runtime';
@@ -258,11 +258,11 @@ setProvider(
 );
 ```
 
-Cloudflare's model surface is also reachable from any target through two ordinary catalog providers: `cloudflare-workers-ai/...` (URL-backed Workers AI) and `cloudflare-ai-gateway/...` (URL-backed AI Gateway), both authenticating with `CLOUDFLARE_API_KEY` like any other hosted provider. See the [Cloudflare target guide](/docs/guide/cloudflare-target/#workers-ai-and-ai-gateway) for the target's full model story.
+Cloudflare's models are also reachable from any target through two ordinary catalog providers, `cloudflare-workers-ai/...` (URL-backed Workers AI) and `cloudflare-ai-gateway/...` (URL-backed AI Gateway). Both authenticate with `CLOUDFLARE_API_KEY` like any other hosted provider. See the [Cloudflare target guide](/docs/guide/cloudflare-target/#workers-ai-and-ai-gateway) for more on models on that target.
 
 ## Next steps
 
-- [Agent Hooks API](/docs/reference/agent-hooks-api/#usemodel) — the full `useModel()` contract, `ThinkingLevel`, and `CompactionConfig`.
+- [Agent Hooks API](/docs/reference/agent-hooks-api/#usemodel) — the full `useModel()` reference, `ThinkingLevel`, and `CompactionConfig`.
 - [Provider API](/docs/reference/provider-api/) — the `providers` config, `setProvider()`, and `cloudflareBindingProvider()`.
 - [Subagents](/docs/guide/subagents/) — give a delegate its own model and thinking level.
 - [Durability](/docs/guide/durability/) — what a submission is and how interrupted model work recovers.

@@ -4,22 +4,22 @@ description: Deploy Flue agents to Fly.io as a long-running Docker app on Fly Ma
 lastReviewedAt: 2026-07-21
 ---
 
-A Flue server is a long-running HTTP service, not a serverless function, so deploy it to Fly Machines that stay up rather than scaling to zero between requests. `fly launch` builds the [Flue Docker image](/docs/ecosystem/deploy/docker/) and runs it on Machines, which suit a stateful, always-on server well.
+A Flue server is a long-running HTTP service, so deploy it to Fly Machines that stay up instead of scaling to zero between requests. `fly launch` builds the [Flue Docker image](/docs/ecosystem/deploy/docker/) and runs it on Machines, which suit a stateful, always-on server.
 
 ## Launch from the Dockerfile
 
-With a [Flue Dockerfile](/docs/ecosystem/deploy/docker/) at the project root, `fly launch` detects it, registers the build, and generates a `fly.toml`. The image is built and deployed by `fly deploy` — `fly launch` only records how to build it.
+With a [Flue Dockerfile](/docs/ecosystem/deploy/docker/) at the project root, `fly launch` detects it, registers the build, and generates a `fly.toml`. `fly deploy` builds and deploys the image. `fly launch` only records how to build it.
 
 ```bash
 fly launch
 fly deploy
 ```
 
-The Dockerfile builds `dist/server.mjs` (`npx vite build`, with the `flue()` plugin in `vite.config.ts`) and starts it with `node dist/server.mjs`. The server binds `PORT` (default 3000), so set `ENV PORT` in the image — or whatever port the image exposes — and make `internal_port` in `fly.toml` match it. The build externalizes dependencies, so `node_modules` must be present in the image at runtime.
+The Dockerfile builds `dist/server.mjs` (`npx vite build`, with the `flue()` plugin in `vite.config.ts`) and starts it with `node dist/server.mjs`. The server binds `PORT` (default 3000), so set `ENV PORT` in the image (or whatever port the image exposes) and make `internal_port` in `fly.toml` match it. The build externalizes dependencies, so `node_modules` must be present in the image at runtime.
 
 ## fly.toml essentials
 
-`fly launch` writes a starter `fly.toml`. The fields that matter for a Flue server:
+`fly launch` writes a starter `fly.toml`. These fields matter for a Flue server:
 
 ```toml
 app = "my-flue-agents"
@@ -44,24 +44,24 @@ primary_region = "iad"
   memory = "512mb"
 ```
 
-`auto_stop_machines` and `auto_start_machines` are meant to move together. Leaving auto-stop on (`"stop"` or `"suspend"`) with `min_machines_running = 0` is scale-to-zero — appropriate for stateless web apps, but wrong for a Flue server: a stopped Machine severs any in-flight streaming connection and discards in-memory session state. Keep at least one Machine running with `auto_stop_machines = "off"` (or `min_machines_running = 1`), and put durable state in Postgres.
+`auto_stop_machines` and `auto_start_machines` are meant to move together. Leaving auto-stop on (`"stop"` or `"suspend"`) with `min_machines_running = 0` is scale-to-zero. That suits stateless web apps but not a Flue server. A stopped Machine severs any in-flight streaming connection and discards in-memory session state. Keep at least one Machine running with `auto_stop_machines = "off"` (or `min_machines_running = 1`), and put durable state in Postgres.
 
 ## Secrets
 
-Provider keys and model configuration are secrets, exposed to the app as environment variables on every Machine. `fly secrets set` restarts the Machines to apply them; the built server reads only this start-time environment, so a `.env` file is not used in production.
+Provider keys and model configuration are secrets, exposed to the app as environment variables on every Machine. `fly secrets set` restarts the Machines to apply them. The built server reads only this start-time environment, so production does not use a `.env` file.
 
 ```bash
 fly secrets set ANTHROPIC_API_KEY=sk-ant-...
 fly secrets set MODEL_SPECIFIER=anthropic/claude-sonnet-4-6
 ```
 
-Use the env var your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. `MODEL_SPECIFIER` is optional and only read if your app consults it.
+Use the env var your provider expects, such as `ANTHROPIC_API_KEY` for Anthropic or `OPENAI_API_KEY` for OpenAI. `MODEL_SPECIFIER` is optional and only read if your app consults it.
 
 ## Persistence
 
-On Node.js, canonical agent conversations, attachments, and accepted submissions live in memory by default — fine for a single Machine, but lost on restart. Back Flue with Postgres for replacement recovery. Multiple Machines must route each agent instance to one live owner; shared storage alone does not make same-instance active-active execution safe.
+On Node.js, canonical agent conversations, attachments, and accepted submissions live in memory by default. That works for a single Machine, but the data is lost on restart. Back Flue with Postgres for replacement recovery. Multiple Machines must route each agent instance to one live owner; shared storage alone does not make same-instance active-active execution safe.
 
-[Fly Managed Postgres](https://fly.io/docs/mpg/) (MPG) is the recommended option; the older unmanaged Fly Postgres (`fly postgres`) still exists, but Fly no longer provides support or guidance for it. `fly mpg create` prompts for a name, region, and plan (or pass `--name` / `--region` / `--plan`); `fly mpg attach` sets `DATABASE_URL` as a secret on the app — the pooled (PgBouncer) connection URL — and restarts it:
+[Fly Managed Postgres](https://fly.io/docs/mpg/) (MPG) is the recommended option. The older unmanaged Fly Postgres (`fly postgres`) still exists, but Fly no longer provides support or guidance for it. `fly mpg create` prompts for a name, region, and plan (or pass `--name` / `--region` / `--plan`). `fly mpg attach` sets `DATABASE_URL` (the pooled PgBouncer connection URL) as a secret on the app and restarts it:
 
 ```bash
 fly mpg create
@@ -93,14 +93,14 @@ Flue discovers `db.ts` at build time and wires it into the generated server. The
 
 ## Health and streaming
 
-Flue does not generate a `/health` route — define one in `app.ts` for the `[[http_service.checks]]` path above, or drop the check. Fly's HTTP checks expect a 2xx and do not follow redirects, so with `force_https = true` either run the check over `https` or add `X-Forwarded-Proto = "https"` to its headers.
+Flue does not generate a `/health` route. Define one in `app.ts` for the `[[http_service.checks]]` path above, or drop the check. Fly's HTTP checks expect a 2xx and do not follow redirects, so with `force_https = true` either run the check over `https` or add `X-Forwarded-Proto = "https"` to its headers.
 
 Agent conversations use long-lived `GET` reads on the conversation URL (long-poll/SSE). Keep at least one Machine running so auto-stop does not cut these connections. For long-running work, retain the admission's `streamUrl` and `offset` and resume the conversation stream instead of holding one blocking request. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
 
 ## Going further
 
 - **Regions and scaling.** `fly scale count` adds Machines and `fly scale vm` resizes them. Multi-Machine deployments need shared Postgres for replacement recovery, plus routing that keeps each agent instance on one live Machine and prevents overlapping owners.
-- **Scheduled agents.** Use Fly [scheduled Machines](https://fly.io/docs/machines/) to call the deployed application's authenticated agent endpoint — a `POST` to the agent's conversation URL with a `kind: 'signal'` message. Calling the deployed application avoids building and starting another local runtime for every fire. See [Schedules](/docs/guide/schedules/).
+- **Scheduled agents.** Use Fly [scheduled Machines](https://fly.io/docs/machines/) to call the deployed application's authenticated agent endpoint with a `POST` to the agent's conversation URL and a `kind: 'signal'` message. Calling the deployed application avoids building and starting another local runtime for every fire. See [Schedules](/docs/guide/schedules/).
 
 ## References
 

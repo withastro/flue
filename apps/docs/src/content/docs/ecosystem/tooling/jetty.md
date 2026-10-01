@@ -68,14 +68,14 @@ The grading runbook must produce the `grade.json` file expected by `gradeWithJet
 
 | Variable               | Purpose                                                                                    |
 | ---------------------- | ------------------------------------------------------------------------------------------ |
-| `JETTY_API_TOKEN`      | **Required** - Authenticates the Jetty SDK. The SDK can also read `~/.config/jetty/token`. |
-| `JETTY_COLLECTION`     | **Required** - Identifies the collection that owns the grading task.                       |
-| `JETTY_GRADE_TASK`     | **Required** - Identifies the deployed grading task.                                       |
-| `JETTY_USE_TRIAL_KEYS` | **Optional** - Set to `true` to use Jetty's trial model keys for the grading task.         |
+| `JETTY_API_TOKEN`      | **Required** — Authenticates the Jetty SDK. The SDK can also read `~/.config/jetty/token`. |
+| `JETTY_COLLECTION`     | **Required** — Identifies the collection that owns the grading task.                       |
+| `JETTY_GRADE_TASK`     | **Required** — Identifies the deployed grading task.                                       |
+| `JETTY_USE_TRIAL_KEYS` | **Optional** — Set to `true` to use Jetty's trial model keys for the grading task.         |
 
 The Flue agent still needs model-provider credentials, which come from the process environment. Jetty credentials configure the separate grading operation.
 
-`@jetty/sdk` and `start()` both require Node.js. To grade a deployed agent instead — including one on the Cloudflare target — prompt it over HTTP with the [Agent SDK](/docs/sdk/overview/) and pass the reply to the same `gradeWithJetty(...)` call from any Node.js process.
+`@jetty/sdk` and `start()` both require Node.js. To grade a deployed agent instead (including one on the Cloudflare target), prompt it over HTTP with the [Agent SDK](/docs/sdk/overview/) and pass the reply to the same `gradeWithJetty(...)` call from any Node.js process.
 
 ## Protect sensitive content
 
@@ -95,4 +95,4 @@ Confirm that the script prints the expected grade and trajectory ID, then inspec
 
 ## Next steps
 
-See [Evals](/docs/guide/evals/) for choosing cases, deterministic assertions, and model-based judges, and [Workflows](/docs/guide/workflows/) for the scripting surface used here — from `flue run` one-shots to durable orchestration. Flue's [Vitest Evals integration](/docs/ecosystem/tooling/vitest-evals/) provides an alternative for running assertions and judges through Vitest, while Jetty stores each grading task as a comparable trajectory.
+See [Evals](/docs/guide/evals/) for choosing cases, deterministic assertions, and model-based judges, and [Workflows](/docs/guide/workflows/) for the scripting API used here, from `flue run` one-shots to durable orchestration. Flue's [Vitest Evals integration](/docs/ecosystem/tooling/vitest-evals/) provides an alternative for running assertions and judges through Vitest, while Jetty stores each grading task as a comparable trajectory.

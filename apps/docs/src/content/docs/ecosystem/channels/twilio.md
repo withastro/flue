@@ -78,7 +78,7 @@ import { channel as twilio } from './channels/twilio.ts';
 app.route('/channels/twilio', twilio.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/twilio` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/twilio` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -110,8 +110,8 @@ query string.
 
 A trusted proxy may strip an external path prefix before the request reaches
 Flue. Signature validation still uses `webhookUrl`; the fixed channel route owns
-the internal path. The incoming request's own query string is not re-checked —
-it is already part of the signed bytes, so any tampering fails signature
+the internal path. The incoming request's own query string is not re-checked.
+It is already part of the signed bytes, so any tampering fails signature
 (`401`).
 
 Connection-override fragments may remain in the configured URL. They are
@@ -218,7 +218,7 @@ export function postMessage(
 ```
 
 The blueprint creates `src/twilio-client.ts` with the Fetch client used above.
-`initialData` is the instance's creation data: recorded once when the event creates
+`initialData` is the instance's creation data. It is recorded once when the event creates
 the instance and ignored afterward, so the channel passes it on every dispatch.
 It carries the conversation ref fields the reply tool needs.
 
@@ -251,14 +251,14 @@ Assistant.initialData = initialData;
 ```
 
 The agent's `initialData` static validates the dispatched `initialData` when the instance is
-created; `useInitialData()` returns the parsed value on every render — the
+created; `useInitialData()` returns the parsed value on every render. The
 agent reads the conversation ref this way instead of parsing it from the
 instance id.
 
 ## Message behavior
 
 Verified messages reach the handler as `{ c, payload, conversation, idempotencyToken? }`.
-`payload` is the provider-native verified form exactly as Twilio signed it: field
+`payload` is the provider-native verified form exactly as Twilio signed it. Field
 names use Twilio's PascalCase wire spelling (`MessageSid`, `From`, `To`, `Body`,
 `NumMedia`, `MediaUrl0`, `OptOutType`, …), every value is a `string`, and a
 parameter Twilio repeats becomes a `readonly string[]`. The channel does not
@@ -288,13 +288,13 @@ https://example.com/channels/twilio/status
 ```
 
 Set the same URL as `StatusCallback` on outbound messages. The status handler
-input mirrors the inbound shape: `payload` carries the exact `MessageStatus` string
-forwarded verbatim — never narrowed to a frozen union — alongside every other
+input mirrors the inbound shape. `payload` carries the exact `MessageStatus` string,
+forwarded verbatim and never narrowed to a frozen union, alongside every other
 signed status parameter (sender, recipient, error, channel, and delivery-receipt
 fields), with the same string / `string[]` rules and index-signature forwarding.
 `conversation` is present only when the signed fields identify the configured
-destination: `From` must match an address destination, or
-`MessagingServiceSid` must match a Messaging Service destination.
+destination, which means `From` matches an address destination or
+`MessagingServiceSid` matches a Messaging Service destination.
 
 Twilio may retry status callbacks with backoff, and may deliver them duplicated
 or out of order. Persist transitions idempotently by message SID; the channel is
@@ -312,8 +312,8 @@ in application code when the raw value matters.
 
 Twilio applies a 15-second read timeout to webhook responses and recommends
 acknowledging fast and processing asynchronously. The channel does not enforce a
-deadline of its own. Inbound message webhooks are not retried by default: on
-error or timeout Twilio uses the configured Fallback URL instead. Connection
+deadline of its own. Inbound message webhooks are not retried by default. On
+error or timeout, Twilio uses the configured Fallback URL instead. Connection
 overrides on the webhook URL can opt into retries with `rc` (retry count) and
 `rp` (retry policy), for example `#rc=2&rp=all`; that fragment is excluded from
 the signed URL. Acknowledge before slow work and make admission idempotent when

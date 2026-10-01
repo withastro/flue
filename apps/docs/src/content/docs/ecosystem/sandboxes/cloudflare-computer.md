@@ -1,12 +1,12 @@
 ---
 title: Cloudflare Computer
-description: Give agents a durable Cloudflare workspace with a real shell.
+description: Give agents a durable Cloudflare workspace with a shell.
 lastReviewedAt: 2026-08-04
 ---
 
-The Cloudflare Computer adapter wraps a [`@cloudflare/computer`](https://github.com/cloudflare/computer) `Workspace` — a durable, SQLite-backed virtual filesystem that lives in the agent's own Durable Object — into a Flue sandbox on the Cloudflare target. Commands run through the package's worker-shell backend, a just-bash shell in a Dynamic Worker operating directly on the durable files, so agents get Flue's full standard tool set (`bash`/`grep`/`glob`/`read`/`write`/`edit`) with no substitutions and no container.
+The Cloudflare Computer adapter wraps a [`@cloudflare/computer`](https://github.com/cloudflare/computer) `Workspace` into a Flue sandbox on the Cloudflare target. A `Workspace` is a durable, SQLite-backed virtual filesystem that lives in the agent's own Durable Object. Commands run through the package's worker-shell backend, a just-bash shell in a Dynamic Worker that operates directly on the durable files. Agents get Flue's standard tool set (`bash`/`grep`/`glob`/`read`/`write`/`edit`) without substitutions or a container.
 
-`@cloudflare/computer` is an early preview from Cloudflare — suitable for experiments and prototypes, not production.
+`@cloudflare/computer` is an early preview from Cloudflare. Use it for experiments and prototypes, not production.
 
 ## Quickstart
 
@@ -18,7 +18,7 @@ flue add sandbox cloudflare-computer
 
 ## Overview
 
-The blueprint creates the adapter at `<source-root>/sandboxes/cloudflare-computer.ts`. Shell commands don't run in your Worker: the adapter mints a Dynamic Worker through a [Worker Loader](https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/) binding and runs just-bash there, against the durable filesystem. That binding — currently beta-gated, so your Cloudflare account needs access — and the `experimental` compatibility flag its Dynamic Worker requires are the two Wrangler additions; there are no API keys or environment variables:
+The blueprint creates the adapter at `<source-root>/sandboxes/cloudflare-computer.ts`. Shell commands don't run in your Worker. The adapter mints a Dynamic Worker through a [Worker Loader](https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/) binding and runs just-bash there, against the durable filesystem. The Wrangler config needs that binding and the `experimental` compatibility flag its Dynamic Worker requires. The binding is currently beta-gated, so your Cloudflare account needs access. No API keys or environment variables are needed:
 
 ```jsonc title="wrangler.jsonc"
 {
@@ -27,7 +27,7 @@ The blueprint creates the adapter at `<source-root>/sandboxes/cloudflare-compute
 }
 ```
 
-Two one-line re-exports complete the wiring: the project's `cloudflare.ts` re-exports `WorkspaceServiceProxy` (the loopback the shell dials back through), and each sandbox-using agent module re-exports the generated `workspaceHost` extension so its Durable Object hosts the workspace.
+Two one-line re-exports complete the setup. The project's `cloudflare.ts` re-exports `WorkspaceServiceProxy` (the loopback the shell dials back through), and each sandbox-using agent module re-exports the generated `workspaceHost` extension so its Durable Object hosts the workspace.
 
 ```ts title="<source-root>/sandboxes/cloudflare-computer.ts (abridged)"
 // flue-blueprint: sandbox/cloudflare-computer@1
@@ -80,12 +80,12 @@ export function Assistant() {
 }
 ```
 
-Application-owned hydration and inspection go through the workspace's native surface: `getComputerWorkspace(...)` (or `computerWorkspace(harness.sandbox)`) exposes `workspace.git` for clones and commits and `workspace.fs` for out-of-band reads and writes, and the adapter's `workspace` option reshapes the generated `WorkspaceOptions` — read-only R2 mounts, a `defaultGitIdentity`, an observer, additional backends. Import all of these helpers from your project adapter file, not from `@flue/runtime/cloudflare`.
+Application-owned hydration and inspection go through the workspace's native API. `getComputerWorkspace(...)` (or `computerWorkspace(harness.sandbox)`) exposes `workspace.git` for clones and commits and `workspace.fs` for out-of-band reads and writes. The adapter's `workspace` option changes the generated `WorkspaceOptions`, for example to add read-only R2 mounts, a `defaultGitIdentity`, an observer, or additional backends. Import all of these helpers from your project adapter file, not from `@flue/runtime/cloudflare`.
 
 ## Choose this adapter when
 
-Use Cloudflare Computer when files must be stored durably in the agent's own Durable Object and shell-expressible work covers the agent's needs — no container to provision, no cold start beyond the Dynamic Worker. Filesystem state survives Durable Object restarts and is capped around 10 GB (it shares the DO's SQLite storage).
+Use Cloudflare Computer when files must be stored durably in the agent's own Durable Object and shell-expressible work covers the agent's needs. There is no container to provision and no cold start beyond the Dynamic Worker. Filesystem state survives Durable Object restarts and is capped around 10 GB (it shares the DO's SQLite storage).
 
-It is not a Linux box: commands run in a JavaScript shell without native binaries or package managers. That is the adapter's default wiring, not the package's ceiling — `@cloudflare/computer` can register additional execution backends against the same durable files, including its full-Linux `CloudflareContainerBackend`, appended through the adapter's `workspace` option as an application-owned configuration. If the agent's baseline need is language toolchains, native tools, or writable bucket mounts, use [Cloudflare Sandbox](/docs/ecosystem/sandboxes/cloudflare/) (Containers) instead.
+It is not a Linux box. Commands run in a JavaScript shell without native binaries or package managers. That is the adapter's default setup, not a limit of the package. `@cloudflare/computer` can register additional execution backends against the same durable files, including its full-Linux `CloudflareContainerBackend`, appended through the adapter's `workspace` option as an application-owned configuration. If the agent's baseline need is language toolchains, native tools, or writable bucket mounts, use [Cloudflare Sandbox](/docs/ecosystem/sandboxes/cloudflare/) (Containers) instead.
 
 See [Sandboxes](/docs/guide/sandboxes/) and [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/).

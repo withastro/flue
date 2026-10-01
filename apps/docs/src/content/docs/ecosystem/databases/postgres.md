@@ -47,7 +47,7 @@ export default postgres({
 });
 ```
 
-Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then survive process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner; Postgres does not enable active-active same-instance execution. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
+Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then survive process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner. Postgres does not enable active-active same-instance execution. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
 
 ## Configure
 
@@ -55,7 +55,7 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 | -------------- | -------------------------------------------------------------------------------------- |
 | `DATABASE_URL` | **Required** — Postgres connection string, e.g. `postgresql://user:pass@host:5432/db`. |
 
-Your driver reads `DATABASE_URL` at runtime — it is not baked into the build.
+Your driver reads `DATABASE_URL` at runtime. It is not baked into the build.
 For local development, `vite dev` loads the project `.env`, and
 `flue run --env <file>` selects an alternate `.env`-format file. In production,
 supply it from your platform's secret store.
@@ -65,22 +65,22 @@ source-root `db.ts` that wraps it. Flue discovers `db.ts` at build
 time and wires it into the generated Node server. After running the command,
 canonical agent conversations, immutable attachments, and accepted submissions persist to Postgres instead of in-memory state.
 
-`@flue/postgres` is a **Node.js** adapter. The Cloudflare target uses Durable
+`@flue/postgres` is a Node.js adapter. The Cloudflare target uses Durable
 Object SQLite automatically and rejects a `db.ts` file at build time, so this
-guide applies to Node deployments. See [Database](/docs/guide/database/) for the
-full picture of how state is stored on each target.
+guide applies to Node deployments. See [Database](/docs/guide/database/) for
+how state is stored on each target.
 
 ## Bring your own driver
 
 `@flue/postgres` does not pick or bundle a database driver. It runs against a
 small runner you wrap around your configured driver, so you own driver choice,
-pooling, TLS, and every other connection option. A runner is three functions:
+pooling, TLS, and every other connection option. A runner consists of
 `query` (a SQL string with numbered `$N` placeholders plus positional params,
 resolving to result rows), `transaction` (runs its callback inside one
 transaction on a single connection), and `close`.
 
 With [`pg`](https://node-postgres.com/) (node-postgres), `transaction` checks
-out a single client and issues `BEGIN`/`COMMIT`/`ROLLBACK` itself — a pool
+out a single client and issues `BEGIN`/`COMMIT`/`ROLLBACK` itself, because a pool
 cannot run a transaction across arbitrary connections:
 
 ```ts title="src/db.ts"
@@ -129,7 +129,7 @@ Not stored by Flue:
 - application-owned business data, unless your own tools store it;
 - provider credentials or secrets.
 
-The submission rows are what make accepted work
+The submission rows make accepted work
 recoverable after an interruption. See [Durability](/docs/guide/durability/)
 for how recovery uses them, and the [Data Persistence API](/docs/reference/data-persistence-api/)
 for the exact adapter contract.
@@ -143,7 +143,7 @@ for the exact adapter contract.
 | Multi-replica Node deployment, or state must survive host loss | `@flue/postgres`, with one live owner per agent instance      |
 | Cloudflare deployment                                          | Built-in Durable Object SQLite (no `db.ts`)                   |
 
-Choose Postgres when a replacement process must recover accepted work, when replicas need shared conversation state, or when a single host's disk is not a durable enough home for state. Keep one live owner for each agent instance and use instance-affine routing across replicas. Managed Postgres pairs naturally with the container deploy targets —
-see [Deploy on AWS](/docs/ecosystem/deploy/aws/) for RDS, and the other
+Choose Postgres when a replacement process must recover accepted work, when replicas need shared conversation state, or when a single host's disk is not a durable enough home for state. Keep one live owner for each agent instance and use instance-affine routing across replicas. Managed Postgres works well with the container deploy targets.
+See [Deploy on AWS](/docs/ecosystem/deploy/aws/) for RDS, and the other
 [deploy guides](/docs/ecosystem/deploy/node/) for provisioning a database
 alongside the server.

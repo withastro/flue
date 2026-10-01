@@ -1,6 +1,6 @@
 ---
 title: libSQL
-description: Give Flue agents durable state with libSQL — a local SQLite file, a self-hosted libSQL server, or an embedded replica.
+description: Give Flue agents durable state with libSQL, using a local SQLite file, a self-hosted libSQL server, or an embedded replica.
 package:
   name: '@flue/libsql'
   href: https://www.npmjs.com/package/@flue/libsql
@@ -38,7 +38,7 @@ export default libsql({
 });
 ```
 
-Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then persist in a local SQLite file or self-hosted libSQL server according to `LIBSQL_URL`; application business data remains application-owned. Embedded replicas require additional `syncUrl` client configuration. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
+Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then persist in a local SQLite file or self-hosted libSQL server according to `LIBSQL_URL`. Application business data remains application-owned. Embedded replicas require additional `syncUrl` client configuration. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
 
 ## Configure
 
@@ -46,27 +46,27 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 | ------------ | -------------------------------------------------------------------------------------------- |
 | `LIBSQL_URL` | **Required** — A local file (`file:./data/flue.db`) or a libSQL server (`http://host:8080`). |
 
-`createClient` reads this at runtime — it is not baked into the build. For local
+`createClient` reads this at runtime. It is not baked into the build. For local
 development, `vite dev` loads the project `.env`, and `flue run --env <file>` loads any
 `.env`-format file. In production, supply it from your platform's secret store.
 
 The blueprint installs `@flue/libsql` and the official `@libsql/client`, and
 writes a source-root `db.ts` that wraps the client. Flue discovers `db.ts` at
 build time and wires it into the generated Node server. For hosted Turso, use
-[`flue add database turso`](/docs/ecosystem/databases/turso/) instead — it is the same
+[`flue add database turso`](/docs/ecosystem/databases/turso/) instead. It is the same
 adapter with a Turso client configuration.
 
-`@flue/libsql` is a **Node.js** adapter. The Cloudflare target uses Durable
+`@flue/libsql` is a Node.js adapter. The Cloudflare target uses Durable
 Object SQLite automatically and rejects a `db.ts` file at build time, so this
-guide applies to Node deployments. See [Database](/docs/guide/database/) for the
-full picture of how state is stored on each target.
+guide applies to Node deployments. See [Database](/docs/guide/database/) for how
+state is stored on each target.
 
 ## Bring your own driver
 
 `@flue/libsql` does not pick or bundle a database driver. It runs against a
 small runner you wrap around your configured
 [`@libsql/client`](https://docs.turso.tech/sdk/ts/reference), so you own the
-client and its connection options. A runner is three functions: `query` (a SQL
+client and its connection options. A runner consists of three functions, `query` (a SQL
 string with `?` placeholders plus positional params, resolving to result rows),
 `transaction` (runs its callback inside one `write` transaction), and `close`.
 `@libsql/client` returns a `ResultSet`, so map its `rows`/`columns` into plain
@@ -116,7 +116,7 @@ export default libsql({
 
 ## Connection targets
 
-`createClient` decides where state lives — the adapter is identical across all
+`createClient` decides where state lives. The adapter is identical across all
 of them:
 
 | Target                                           | `createClient(...)`                                     |
@@ -140,7 +140,7 @@ The adapter's `migrate()` hook runs automatically when the generated Node
 server starts. It creates Flue's `flue_*` tables idempotently and stamps a
 format version, so a fresh database is provisioned on first boot and an existing
 one is reused on restart. There is no separate migration command to run, and a
-database written by a newer Flue refuses to start rather than corrupting state.
+database written by a newer Flue refuses to start instead of corrupting state.
 
 ## What gets stored
 
@@ -174,6 +174,6 @@ for the exact adapter contract.
 | Hosted, replicated SQLite                                   | `@flue/libsql` against [Turso](/docs/ecosystem/databases/turso/)           |
 | Multi-replica Node deployment on Postgres                   | [`@flue/postgres`](/docs/ecosystem/databases/postgres/)                    |
 
-libSQL is the right choice when you want SQLite's model but reachable over the
-network or kept close to the app as an embedded replica. For a fully managed,
+Choose libSQL when you want SQLite's model but reachable over the network or
+kept close to the app as an embedded replica. For a managed,
 replicated deployment, point the same adapter at [Turso](/docs/ecosystem/databases/turso/).

@@ -1,28 +1,28 @@
 ---
 title: Sandboxes
-description: Give your agent a workspace — the filesystem and shell where it reads, writes, and runs commands.
+description: Give your agent a filesystem and shell where it reads, writes, and runs commands.
 lastReviewedAt: 2026-07-21
 ---
 
-A **sandbox** is an execution environment you attach to an agent: a filesystem and shell where it reads, writes, and runs commands. An agent doesn't have one unless you give it one — `useSandbox()` is what adds file and command access. This guide covers what attaching a sandbox brings, the in-memory virtual sandbox, binding an agent to the host machine with `local()`, remote provider sandboxes, and how an agent's environment can change over its life.
+A **sandbox** is a filesystem and shell that you attach to an agent as its execution environment. The agent reads, writes, and runs commands there. An agent doesn't have one unless you give it one. `useSandbox()` adds file and command access. This guide covers what attaching a sandbox brings, the in-memory virtual sandbox, binding an agent to the host machine with `local()`, remote provider sandboxes, and how an agent's environment can change over its life.
 
 ## What a sandbox adds
 
 An agent has at most one environment, and attaching it defines several capabilities at once:
 
-- **The file and shell tools.** With a sandbox attached, the agent's tool set gains `read`, `write`, `edit`, `bash`, `grep`, and `glob`, all operating on it. When the model runs `bash`, the command executes wherever the sandbox says commands execute. (A sandbox can also replace this tool set with its own — see [Sandbox-provided tools](#sandbox-provided-tools).)
-- **Workspace context.** At initialization, Flue looks around the sandbox's working directory and composes what it finds into the agent's system prompt: the working directory path, a directory listing, and the contents of `AGENTS.md` when present.
+- **The file and shell tools.** With a sandbox attached, the agent's tool set gains `read`, `write`, `edit`, `bash`, `grep`, and `glob`, all operating on it. When the model runs `bash`, the command executes wherever the sandbox says commands execute. (A sandbox can also replace this tool set with its own. See [Sandbox-provided tools](#sandbox-provided-tools).)
+- **Workspace context.** At initialization, Flue reads the sandbox's working directory and composes its path, a directory listing, and the contents of `AGENTS.md` (when present) into the agent's system prompt.
 - **Workspace skills.** Skill directories under `<cwd>/.agents/skills/` are discovered at the same time and offered to the agent by name, no import required. See [Skills](/docs/guide/skills/#workspace-skills).
-- **Subagents.** Delegates share the parent's environment — same filesystem, same tools. A `task` call can scope a child to a different working directory, but never to a different sandbox. See [Subagents](/docs/guide/subagents/#what-a-subagent-inherits).
+- **Subagents.** Delegates share the parent's filesystem and tools. A `task` call can scope a child to a different working directory, but never to a different sandbox. See [Subagents](/docs/guide/subagents/#what-a-subagent-inherits).
 - **Your application code.** [Harness tools](/docs/guide/tools/#harness-tools) reach the same environment as `harness.sandbox`, for staging files in and out without a conversation record.
 
-Without a sandbox, an agent simply has none of this: no file or shell tools, no workspace in its prompt, and `harness.sandbox` throws. Everything else — custom tools, skills, subagents, state — works the same either way, and plenty of agents never need more.
+Without a sandbox, an agent has no file or shell tools and no workspace in its prompt, and `harness.sandbox` throws. Everything else (custom tools, skills, subagents, state) works the same either way, and plenty of agents never need more.
 
-Choose the narrowest environment that supports the task: expanding it expands what model-directed work can read, change, execute, and reach.
+Choose the narrowest environment that supports the task. A wider environment widens what model-directed work can read, change, execute, and reach.
 
 ## The virtual sandbox
 
-The lightest environment is a **virtual sandbox** — an in-memory filesystem paired with an emulated bash, implemented entirely in TypeScript (the [just-bash](https://github.com/vercel-labs/just-bash) engine). Most of the standard unix toolbox works — `ls`, `sed`, `awk`, `jq`, `sort`, pipes, redirects — plus `curl` for HTTP. No real process is ever spawned.
+The lightest environment is a **virtual sandbox**, which pairs an in-memory filesystem with an emulated bash. Both are implemented in TypeScript (the [just-bash](https://github.com/vercel-labs/just-bash) engine). Most standard unix tools work (`ls`, `sed`, `awk`, `jq`, `sort`, pipes, redirects), plus `curl` for HTTP. It never spawns a host process.
 
 Add `just-bash` to your project's dependencies and wrap an instance with the `bash(...)` helper:
 
@@ -40,10 +40,10 @@ export function ScratchWorker() {
 
 Two properties define it:
 
-- **It's isolated from the host.** Commands are emulated in-process; the model cannot reach your host filesystem, processes, or environment variables. The network is opt-in: pass `network: { allowedUrlPrefixes: [...] }` (or `dangerouslyAllowFullInternetAccess: true`) to let the emulated `curl` reach out.
-- **It's ephemeral.** The filesystem starts empty and is rebuilt fresh each time the runtime initializes the agent for new work. Files written while processing one message are gone by the next. Keep durable knowledge in [persistent state](/docs/guide/agent-hooks/#persisted-state), and use a real sandbox when files themselves must last.
+- **It is isolated from the host.** Commands are emulated in-process; the model cannot reach your host filesystem, processes, or environment variables. To let the emulated `curl` reach out, opt in to network access with `network: { allowedUrlPrefixes: [...] }` (or `dangerouslyAllowFullInternetAccess: true`).
+- **It is ephemeral.** The filesystem starts empty and is rebuilt fresh each time the runtime initializes the agent for new work. Files written while processing one message are gone by the next. Keep durable knowledge in [persistent state](/docs/guide/agent-hooks/#persisted-state), and use a remote provider sandbox when files themselves must last.
 
-This is enough for many production agents — `curl`-and-`jq` data work, text reshaping, anything that only needs scratch space.
+Many production agents need nothing more. It covers `curl`-and-`jq` data work, text reshaping, and anything that only needs scratch space.
 
 Application code reaches the same environment as `harness.sandbox`, so a [harness tool](/docs/guide/tools/#harness-tools) can stage an input file, let the agent work on it, and collect the result:
 
@@ -65,11 +65,11 @@ export const reviewDocument = defineTool({
 });
 ```
 
-The model sees `document.md` appear in its workspace and works on it with the file tools; your application provides the input and retrieves `review.md`; none of the staging enters the conversation.
+The model sees `document.md` appear in its workspace and works on it with the file tools. Your application provides the input and retrieves `review.md`. None of the staging enters the conversation.
 
 ### Seeding files and commands
 
-The just-bash instance is yours to configure — seed files, allowlist network access, or add custom commands:
+The just-bash instance is yours to configure. You can seed files, allowlist network access, or add custom commands:
 
 ```ts title="src/agents/catalog-analyst.ts"
 'use agent';
@@ -105,14 +105,14 @@ useSandbox(factory, { cwd: '/srv/checkouts/flue' });
 
 A few rules shape how it behaves:
 
-- **At most once per render.** An agent has one environment. Call it in the agent body or inside a single custom hook; a second call in the same render throws. It also throws inside a subagent's render — delegates share the parent's environment.
-- **The factory is lazy.** Constructing the factory value on every render is cheap by design. The expensive work happens inside the factory's `createSandbox()`, which the runtime calls once when it initializes the agent — never on re-renders.
+- **At most once per render.** An agent has one environment. Call it in the agent body or inside a single custom hook; a second call in the same render throws. It also throws inside a subagent's render, because delegates share the parent's environment.
+- **The factory is lazy.** Constructing the factory value on every render is cheap. The expensive work happens inside the factory's `createSandbox()`, which the runtime calls once when it initializes the agent, and never on re-renders.
 - **The factory receives the agent instance id.** Adapters can key provider resources on it, which is how a remote sandbox gives each conversation its own durable workspace (more below).
 - **`cwd` scopes the working directory** inside the environment, resolved once at initialization against the sandbox's own base directory. It determines where commands run by default and where workspace discovery (`AGENTS.md`, skills, the directory listing) happens.
 
 ## The local sandbox
 
-On the [Node.js target](/docs/guide/node-target/), the built-in `local()` factory binds the agent directly to the host: file operations use the real filesystem, and `bash` commands run as real processes through the host shell. There is no isolation, by design. Use it for development tools, CI tasks, coding agents, and self-hosted automation where the host environment either is the workspace or already provides the isolation (a container, a dedicated VM). Do not use it as an isolation boundary for untrusted requests or multiple tenants.
+On the [Node.js target](/docs/guide/node-target/), the built-in `local()` factory binds the agent directly to the host, so file operations use the real filesystem and `bash` commands run as real processes through the host shell. There is no isolation. Use it for development tools, CI tasks, coding agents, and self-hosted automation where the host environment either is the workspace or already provides the isolation (a container, a dedicated VM). Do not use it as an isolation boundary for untrusted requests or multiple tenants.
 
 ```ts title="src/agents/release-manager.ts"
 'use agent';
@@ -128,15 +128,15 @@ export function ReleaseManager() {
 
 The working directory defaults to `process.cwd()`; override it with `local({ cwd })`.
 
-The model's shell does **not** inherit your process environment. Only a short allowlist of shell essentials passes through by default — `PATH`, `HOME`, `USER`, `LANG`, `TERM`, `TMPDIR`, and the like — and never API keys, tokens, or cloud credentials. Anything else is an explicit, per-variable opt-in through the `env` option, as `GH_TOKEN` is above. Set a key to `undefined` to drop one of the defaults. Passing `env: { ...process.env }` hands the model's shell your entire host environment, secrets included — do that only in environments you fully trust. The snapshot is taken once when the sandbox is constructed; later changes to `process.env` are not picked up.
+The model's shell does **not** inherit your process environment. Only a short allowlist of shell essentials passes through by default (`PATH`, `HOME`, `USER`, `LANG`, `TERM`, `TMPDIR`, and the like), and never API keys, tokens, or cloud credentials. Anything else is an explicit, per-variable opt-in through the `env` option, as `GH_TOKEN` is above. Set a key to `undefined` to drop one of the defaults. Passing `env: { ...process.env }` hands the model's shell your entire host environment, secrets included. Do that only in environments you trust. The snapshot is taken once when the sandbox is constructed; later changes to `process.env` are not picked up.
 
-Before widening the shell's credentials, consider whether a narrow application [tool](/docs/guide/tools/) can perform the privileged action instead — a model-directed shell should hold as little as possible.
+Before widening the shell's credentials, consider whether a narrow application [tool](/docs/guide/tools/) can perform the privileged action instead. A model-directed shell should hold as little as possible.
 
 See the [Node.js target guide](/docs/guide/node-target/#local-sandbox) for the full `local()` reference.
 
 ## Remote sandboxes
 
-When agent work needs per-conversation isolation, a full Linux toolchain, or code you wouldn't run on your own host, attach a provider-managed sandbox through a **sandbox adapter**. An adapter is a small file in your project that wraps a provider's SDK into the sandbox factory contract.
+When agent work needs per-conversation isolation, a full Linux toolchain, or code you wouldn't run on your own host, attach a provider-managed sandbox through a **sandbox adapter**. An adapter is a small file in your project that wraps a provider's SDK into the sandbox factory interface.
 
 Add one with the [`flue add`](/docs/cli/add/) blueprint command:
 
@@ -144,9 +144,9 @@ Add one with the [`flue add`](/docs/cli/add/) blueprint command:
 flue add sandbox e2b
 ```
 
-The blueprint walks your coding agent through creating `<source-dir>/sandboxes/e2b.ts` and installing the provider SDK. The Ecosystem catalog lists supported providers — including [Daytona](/docs/ecosystem/sandboxes/daytona/), [E2B](/docs/ecosystem/sandboxes/e2b/), [Modal](/docs/ecosystem/sandboxes/modal/), [Cloudflare Sandbox](/docs/ecosystem/sandboxes/cloudflare/), and [Cloudflare Computer](/docs/ecosystem/sandboxes/cloudflare-computer/) — see [Sandboxes in the Ecosystem](/docs/ecosystem/#sandboxes). For an unsupported provider, run `flue add sandbox <docs-url>` and your coding agent can build the adapter against the [Sandbox Adapter API](/docs/reference/sandbox-api/).
+The blueprint walks your coding agent through creating `<source-dir>/sandboxes/e2b.ts` and installing the provider SDK. The Ecosystem catalog lists supported providers, including [Daytona](/docs/ecosystem/sandboxes/daytona/), [E2B](/docs/ecosystem/sandboxes/e2b/), [Modal](/docs/ecosystem/sandboxes/modal/), [Cloudflare Sandbox](/docs/ecosystem/sandboxes/cloudflare/), and [Cloudflare Computer](/docs/ecosystem/sandboxes/cloudflare-computer/). See [Sandboxes in the Ecosystem](/docs/ecosystem/#sandboxes). For an unsupported provider, run `flue add sandbox <docs-url>` and your coding agent can build the adapter against the [Sandbox Adapter API](/docs/reference/sandbox-api/).
 
-Adapters are deliberately thin: your application creates, reuses, and deletes provider sandboxes; Flue only connects to what you hand it and never destroys provider infrastructure. The usual pattern wraps the provider call in the factory itself, so the sandbox is created (or reconnected) lazily at initialization:
+Adapters are thin. Your application creates, reuses, and deletes provider sandboxes. Flue only connects to what you hand it and never destroys provider infrastructure. The usual pattern wraps the provider call in the factory itself, so the sandbox is created (or reconnected) lazily at initialization:
 
 ```ts title="src/agents/code-runner.ts"
 'use agent';
@@ -169,15 +169,15 @@ export function CodeRunner() {
 
 `createSandbox({ id })` receives the agent instance id. A factory that looks up an existing provider sandbox by that id before creating one gives each conversation a durable workspace that survives across messages and process restarts.
 
-Cancelling a running command — the model's own `timeout`, or your application aborting the surrounding task — always rejects promptly, whatever the provider does under the hood. `local()`'s process-group kill actually stops the command, but most provider SDKs have no mid-flight cancellation: the remote command keeps running in the background after the rejection, and its eventual output is discarded rather than appearing later in the conversation. A provider whose SDK does support cancellation (Vercel, Mirage) stops the command for real instead of just abandoning it.
+Cancelling a running command (the model's own `timeout`, or your application aborting the surrounding task) always rejects promptly, whatever the provider does. `local()`'s process-group kill actually stops the command, but most provider SDKs have no mid-flight cancellation. With those, the remote command keeps running in the background after the rejection, and its eventual output is discarded rather than appearing later in the conversation. A provider whose SDK does support cancellation (Vercel, Mirage) stops the command instead of abandoning it.
 
 ### Sandbox-provided tools
 
-A sandbox factory may also carry a `tools` function. When present, it **replaces** the framework's default model-facing tool set for that agent — an adapter for an exec-less environment, for example, keeps the `read`/`write`/`edit` file tools but swaps the shell-backed `bash`/`grep`/`glob` for its own executor tool. Adapters compose these sets from the exported per-tool factories (`createReadTool`, `createBashTool`, and friends) rather than rebuilding from scratch. Because capabilities vary this way, check an integration's documentation before assuming ordinary file or command tools are available. See the [Sandbox Adapter API](/docs/reference/sandbox-api/) for the contract.
+A sandbox factory may also carry a `tools` function. When present, it **replaces** the framework's default model-facing tool set for that agent. An adapter for an exec-less environment, for example, keeps the `read`/`write`/`edit` file tools but swaps the shell-backed `bash`/`grep`/`glob` for its own executor tool. Adapters compose these sets from the exported per-tool factories (`createReadTool`, `createBashTool`, and friends) rather than rebuilding from scratch. Because capabilities vary this way, check an integration's documentation before assuming ordinary file or command tools are available. See the [Sandbox Adapter API](/docs/reference/sandbox-api/) for the interface.
 
 ## Conditional attachment
 
-Like other hooks, `useSandbox()` may be called conditionally — an agent can legally gain or lose its sandbox mid-conversation. Gate the call on [persistent state](/docs/guide/agent-hooks/#persisted-state) and let a tool flip it:
+Like other hooks, `useSandbox()` may be called conditionally. An agent can gain or lose its sandbox mid-conversation. Gate the call on [persistent state](/docs/guide/agent-hooks/#persisted-state) and let a tool flip it:
 
 ```ts title="src/agents/support-engineer.ts"
 'use agent';
@@ -207,11 +207,11 @@ export function SupportEngineer() {
 }
 ```
 
-Presence of the `useSandbox()` call is read at initialization and again at every turn boundary. When it flips, the environment swaps before the next model call: attaching resolves the declared factory, and detaching removes the environment — the file and shell tools drop with it, and nothing carries over either way. The model is told about the swap with a single `environment` signal in the conversation that restates the complete current state — the new working directory plus the full tool, skill, and subagent rosters — and warns that files and results from the previous environment may no longer be accessible (see [Dynamic resources](/docs/reference/agent-api/#dynamic-resources)).
+Presence of the `useSandbox()` call is read at initialization and again at every turn boundary. When it flips, the environment swaps before the next model call. Attaching resolves the declared factory, and detaching removes the environment. The file and shell tools drop with it, and nothing carries over either way. The model learns about the swap through a single `environment` signal in the conversation. The signal restates the complete current state (the new working directory plus the full tool, skill, and subagent rosters) and warns that files and results from the previous environment may no longer be accessible (see [Dynamic resources](/docs/reference/agent-api/#dynamic-resources)).
 
-The system prompt stays frozen: it keeps describing the workspace discovered at initialization until the next [compaction](/docs/reference/agent-hooks-api/#compactionconfig), which re-discovers against the current environment. A swap also rewrites the native tools array, since the file and shell tools come and go with it, and that invalidates the provider's prompt cache.
+The system prompt stays frozen. It keeps describing the workspace discovered at initialization until the next [compaction](/docs/reference/agent-hooks-api/#compactionconfig), which re-discovers against the current environment. A swap also rewrites the native tools array, since the file and shell tools come and go with it, and that invalidates the provider's prompt cache.
 
-Only _presence_ is observable: factories are fresh objects on every render, so replacing sandbox A with sandbox B while staying attached doesn't swap mid-run — it takes effect when the next submission initializes. And because the condition lives in persistent state, it replays durably: every later submission re-attaches the same declaration, and an adapter keyed on the instance id resolves back to the same workspace.
+Factories are fresh objects on every render, so only _presence_ is observable. Replacing sandbox A with sandbox B while staying attached doesn't swap mid-run. The change takes effect when the next submission initializes. And because the condition lives in persistent state, it replays durably, with every later submission re-attaching the same declaration and an adapter keyed on the instance id resolving back to the same workspace.
 
 ## Next steps
 

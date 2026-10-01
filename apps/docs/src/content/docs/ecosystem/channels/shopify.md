@@ -80,7 +80,7 @@ import { channel as shopify } from './channels/shopify.ts';
 app.route('/channels/shopify', shopify.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/shopify` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/shopify` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -318,7 +318,7 @@ Shopify computes base64 HMAC-SHA256 over the exact request body.
 `@flue/shopify` verifies those bytes before decoding or parsing JSON. The
 first-party channel supports JSON subscriptions only; XML receives `415`.
 
-The callback receives `{ c, payload, rawBody }`: the Hono context, the parsed
+The callback receives `{ c, payload, rawBody }`, which hold the Hono context, the parsed
 JSON `payload`, and the exact verified `rawBody`. Delivery metadata is read from
 the provider's native headers through `c`:
 
@@ -327,7 +327,7 @@ the provider's native headers through `c`:
 - optional `'x-shopify-event-id'`, `'x-shopify-triggered-at'`, and
   `'x-shopify-sub-topic'`.
 
-The channel verifies the body signature only; it does not curate a typed header
+The channel verifies the body signature only. It does not curate a typed header
 object, require any header's presence, or read the non-standard `X-Shopify-Name`
 header. A delivery missing a metadata header still reaches the callback, where
 the application reads and validates the headers it consumes from `c`.
@@ -369,8 +369,8 @@ Non-2xx responses ask Shopify to retry.
 
 Shopify allows five seconds for the complete delivery. The channel does not
 enforce a deadline with a timer, because racing a JavaScript callback against a
-timer cannot cancel it: the timed-out work keeps running and may complete after
-the failure response. Admit durable work promptly — dispatch and return —
+timer cannot cancel it. The timed-out work keeps running and may complete after
+the failure response. Admit durable work promptly (dispatch and return)
 rather than performing slow operations before responding, and schedule
 long-running processing outside the webhook response path. A thrown callback
 propagates to Hono's error handler.
@@ -380,7 +380,7 @@ can be duplicated or arrive out of order. Use
 `c.req.header('x-shopify-webhook-id')` in application-owned durable storage for
 delivery deduplication, relying on idempotency rather than a timeout to keep
 retries safe. Optional `c.req.header('x-shopify-event-id')` correlates separate
-deliveries caused by the same merchant action; it does not replace the webhook
+deliveries caused by the same merchant action. It does not replace the webhook
 id.
 
 The channel does not register subscriptions, persist delivery ids, restore

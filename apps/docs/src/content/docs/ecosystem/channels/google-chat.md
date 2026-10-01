@@ -94,7 +94,7 @@ import { channel as googleChat } from './channels/google-chat.ts';
 app.route('/channels/google-chat', googleChat.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/google-chat` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/google-chat` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -112,7 +112,7 @@ requests and `jose` for a project-owned outbound Fetch client. After running the
 command, you will have a new `src/channels/google-chat.ts` module exporting
 `channel`, `client`, and an application-owned message tool.
 
-Configure only the credentials for the surfaces your application uses.
+Configure only the credentials for the features your application uses.
 
 Set the Google Chat app connection to **HTTP endpoint URL** and use the full
 public interaction route:
@@ -139,7 +139,7 @@ match the exact subscription resource in every push body.
 | [Google Chat interaction events](https://developers.google.com/workspace/chat/receive-respond-interactions)  | `/channels/google-chat/interactions` |
 | [Google Workspace Events for Google Chat](https://developers.google.com/workspace/events/guides/events-chat) | `/channels/google-chat/events`       |
 
-Configure only the surfaces your application handles. Omitting `interactions` or
+Configure only the webhooks your application handles. Omitting `interactions` or
 `workspaceEvents` from `createGoogleChatChannel()` omits its route.
 
 ### Google Chat interactions
@@ -329,9 +329,9 @@ export function postMessage(ref: GoogleChatConversationRef) {
 }
 ```
 
-`initialData` is the instance's creation data: recorded once when the event creates
-the instance and ignored afterward, so the channel passes it on every
-dispatch. Bind the tool from the agent with `useInitialData()` instead of
+`initialData` is the instance's creation data. It is recorded once when the
+event creates the instance and ignored afterward, so the channel passes it on
+every dispatch. Bind the tool from the agent with `useInitialData()` instead of
 parsing the instance id:
 
 ```ts title="src/agents/assistant.ts"

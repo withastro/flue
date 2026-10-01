@@ -91,7 +91,7 @@ import { channel as whatsapp } from './channels/whatsapp.ts';
 app.route('/channels/whatsapp', whatsapp.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/whatsapp` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/whatsapp` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -103,7 +103,7 @@ app.route('/channels/whatsapp', whatsapp.route());
 | `WHATSAPP_PHONE_NUMBER_ID`     | **Required** — Restricts handling to the configured phone number.            |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | **Optional** — Restricts handling by business account as application policy. |
 
-It installs `@flue/whatsapp` for verified ingress and
+The blueprint installs `@flue/whatsapp` for verified ingress and
 `@kapso/whatsapp-cloud-api` for project-owned Graph API access. `@flue/whatsapp`
 requires Node 24 because its selected webhook type package declares that engine
 floor. The client is Fetch-based and runs in Node and workerd with Flue's
@@ -122,7 +122,7 @@ Configure the Meta app with the route above and a random
 Meta sends GET requests for `hub.challenge` verification and signs POST bodies
 with the app secret in `X-Hub-Signature-256`. The package verifies the exact
 bytes, then forwards Meta's provider-native payload unmodified. It does not
-filter by business account or phone number; restricting to your configured
+filter by business account or phone number. Restricting to your configured
 phone number (`metadata.phone_number_id`) or business account (`entry[].id`) is
 application policy, as the handler below shows.
 
@@ -265,10 +265,10 @@ export function postMessage(ref: WhatsAppSendRef) {
 }
 ```
 
-`initialData` is the instance's creation data: recorded once when the event creates
-the instance and ignored afterward, so the channel passes it on every
-dispatch. It carries the conversation's destination facts — the agent reads
-them with `useInitialData()` instead of parsing the instance id — plus small
+`initialData` is the instance's creation data. It is recorded once when the event
+creates the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the conversation's destination facts (the agent reads
+them with `useInitialData()` instead of parsing the instance id) plus small
 instance-constant context like the contact's display name. Per-message facts
 stay on the signal's `attributes`.
 
@@ -313,15 +313,15 @@ Assistant.initialData = initialData;
 ```
 
 The agent's `initialData` static validates the dispatched `initialData` when the instance is
-created; `useInitialData()` returns the parsed value on every render. Trusted
-application code selects the destination; the model selects only message
+created, and `useInitialData()` returns the parsed value on every render. Trusted
+application code selects the destination. The model selects only message
 text. `parseInstanceId()` remains available as an escape hatch for recovering
 that destination from the id directly.
 
 ## Delivery behavior
 
 One POST can contain many entries, changes, messages, and statuses. The callback
-runs once with the complete verified delivery; `payload` is Meta's
+runs once with the complete verified delivery. `payload` is Meta's
 provider-native webhook object, forwarded unmodified and typed by the
 third-party, community-maintained `@whatsapp-cloudapi/types` package. Walk
 `payload.entry[].changes[]` in the order Meta sent them, narrow on
@@ -331,19 +331,19 @@ item before returning.
 The `message.type` discriminant covers text, image, audio, video, document,
 sticker, location, contacts, interactive button/list/flow replies, legacy
 buttons, reactions, order, system, and unsupported messages. Authenticated future
-shapes still forward at runtime, but may require an application cast or type
+message types still forward at runtime, but may require an application cast or type
 guard until the type package models them. The `status` discriminant preserves
 `sent`, `delivered`, `read`, `played`, and `failed`.
 
 Returning nothing produces an empty `200`. A JSON-compatible value becomes the
-response body; a Hono or Fetch `Response` passes through. A thrown handler is
-not swallowed and reaches Hono's error handler.
+response body, and a Hono or Fetch `Response` passes through. An error thrown by
+the handler is not swallowed and reaches Hono's error handler.
 
 Meta expects a prompt `200` (within a few seconds) or it may mark the webhook
-inactive, and it retries non-`200` deliveries with decreasing frequency for up
+inactive. It retries non-`200` deliveries with decreasing frequency for up
 to seven days, so duplicates are expected. Admit durable work quickly (dispatch,
 then return) instead of blocking on slow operations. The channel is stateless
-and does not deduplicate; claim message ids in durable application storage
+and does not deduplicate. Claim message ids in durable application storage
 before dispatch when duplicate admission is unacceptable.
 
 ## Conversation identity
@@ -361,8 +361,8 @@ uses its authenticated low-level `request()` method for the documented BSUID
 workerd.
 
 Native media payloads carry a bearer-authenticated media `id` (and, on newer
-API versions, a transient `url`). Treat both as transport credentials: download
-media with the project-owned client using the verified id, and avoid forwarding
-the raw `payload` or media URLs into model context wholesale.
+API versions, a transient `url`). Treat both as transport credentials. Download
+media with the project-owned client using the verified id, and do not forward
+the whole raw `payload` or media URLs into model context.
 
 See the [`@flue/whatsapp` README](https://github.com/withastro/flue/tree/main/packages/whatsapp#readme).

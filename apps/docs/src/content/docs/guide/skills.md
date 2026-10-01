@@ -4,7 +4,7 @@ description: Teach agents reusable expertise with progressively disclosed instru
 lastReviewedAt: 2026-07-21
 ---
 
-A **skill** packages reusable expertise — instructions written in markdown, optionally with supporting files — that an agent loads only when it needs it. Where a [tool](/docs/guide/tools/) executes application code, a skill teaches a procedure.
+A **skill** packages reusable expertise (instructions written in markdown, optionally with supporting files) that an agent loads only when it needs it. Where a [tool](/docs/guide/tools/) executes application code, a skill teaches a procedure.
 
 Skills follow the open [Agent Skills](https://agentskills.io) format, so a skill written for Flue works in other harnesses that speak the format, and third-party skills drop into your agents unchanged.
 
@@ -13,12 +13,12 @@ Skills follow the open [Agent Skills](https://agentskills.io) format, so a skill
 Every skill has three parts:
 
 - **`name`** — a short identifier (`refunds`, `review-pr`) the model uses to activate it.
-- **`description`** — one or two sentences stating what the skill does _and when to use it_. This is the only part the model always sees, so it carries the entire routing decision.
+- **`description`** — one or two sentences stating what the skill does _and when to use it_. This is the only part the model always sees, so the model decides whether to activate the skill from the description alone.
 - **`instructions`** — the full procedure, loaded only on activation.
 
-A skill may also carry **supporting files** — checklists, templates, reference documents — that stay unloaded until the model explicitly reads one.
+A skill may also carry **supporting files**, such as checklists, templates, and reference documents. They stay unloaded until the model reads one.
 
-Skills are **progressively disclosed**: each mounted skill costs one always-present catalog line (name + description) in the system prompt, and nothing more until the model decides the task at hand matches. Then it activates the skill, receives the full instructions, and reads supporting files only as needed. An agent can carry dozens of skills without paying for their content on every turn.
+Skills are **progressively disclosed**. Each mounted skill costs one always-present catalog line (name + description) in the system prompt, and nothing more until the model decides the task at hand matches. The model then activates the skill, receives the full instructions, and reads supporting files only as needed. An agent can carry dozens of skills without paying for their content on every turn.
 
 ## Author a skill directory
 
@@ -44,7 +44,7 @@ Follow this procedure for every refund request:
 4. If not eligible, explain which rule applies and offer the alternatives listed in the policy.
 ```
 
-The description is what the model reads when deciding whether the skill applies — state the capability and the trigger ("Use when…"). Keep `SKILL.md` focused on the procedure, and move bulky reference material into supporting files the instructions point at.
+The model reads the description when it decides whether the skill applies, so state the capability and the trigger ("Use when…"). Keep `SKILL.md` focused on the procedure, and move bulky reference material into supporting files the instructions point at.
 
 ### Frontmatter fields
 
@@ -55,7 +55,7 @@ Flue validates every `SKILL.md` against the [Agent Skills specification](https:/
 - `license` (optional) — accepted; informational only.
 - `compatibility` (optional) — accepted; at most 500 characters; informational only.
 - `metadata` (optional) — accepted; string-to-string mapping; not interpreted by Flue.
-- `allowed-tools` (optional) — accepted, not enforced. The field is experimental in the Agent Skills spec and support may vary between implementations; Flue carries it for compatibility and does not act on it.
+- `allowed-tools` (optional) — accepted, not enforced. The field is experimental in the Agent Skills spec, and support may vary between implementations. Flue carries it for compatibility and does not act on it.
 
 > **Security note:** `allowed-tools` lists the tools a skill author expects to use. It does not restrict what the skill can call, so enforce authorization in your own tools and [approval gates](/docs/guide/tools/#approval-gates).
 
@@ -63,7 +63,7 @@ Unknown frontmatter fields are ignored, so skills that carry extra host-specific
 
 ## Import and mount a skill
 
-Import the `SKILL.md` file by its module specifier, like any other module. At build time, Flue recognizes the import, validates the frontmatter, and packages the entire directory with your application. The import's value is a typed `SkillReference`; mount it with the [`useSkill`](/docs/reference/agent-hooks-api/#useskill) hook:
+Import the `SKILL.md` file by its module specifier, like any other module. At build time, Flue recognizes the import, validates the frontmatter, and packages the directory with your application. The import's value is a typed `SkillReference`. Mount it with the [`useSkill`](/docs/reference/agent-hooks-api/#useskill) hook:
 
 ```ts title="src/agents/support-agent.ts"
 'use agent';
@@ -77,7 +77,7 @@ export function SupportAgent() {
 }
 ```
 
-There is no registration step and no runtime file copying — the import is the declaration, and it works everywhere your project builds: the dev server, `vite build`, and `flue run`. Type declarations for `SKILL.md` and `.md` imports ship with `@flue/runtime`, and in dev, editing any file in the skill directory picks up the change automatically.
+The import is the declaration. Flue needs no registration step or runtime file copying, and the import works everywhere your project builds, in the dev server, `vite build`, and `flue run`. Type declarations for `SKILL.md` and `.md` imports ship with `@flue/runtime`. In dev, Flue picks up edits to any file in the skill directory automatically.
 
 An import from a package works the same way:
 
@@ -85,15 +85,15 @@ An import from a package works the same way:
 import review from '@acme/review-skills/review/SKILL.md';
 ```
 
-The package must publish `SKILL.md` and its supporting files; if it defines package exports, it must export the imported `SKILL.md` subpath.
+The package must publish `SKILL.md` and its supporting files. If it defines package exports, it must export the imported `SKILL.md` subpath.
 
-A few rules to know:
+Rules:
 
-- Skill imports must be **static** — a dynamic `import('./skills/x/SKILL.md')` is a build error.
-- Each skill name mounts **once per render**; mounting the same name twice throws.
-- Packaging skips repository noise (`node_modules`, `.git`, `dist`, and similar), warns on files over 1MB, and **refuses to package secrets** — `.env` files, private keys, credential stores, and symbolic links are hard errors.
+- Skill imports must be static. A dynamic `import('./skills/x/SKILL.md')` is a build error.
+- Each skill name mounts once per render. Mounting the same name twice throws.
+- Packaging skips repository noise (`node_modules`, `.git`, `dist`, and similar), warns on files over 1MB, and **refuses to package secrets**. It treats `.env` files, private keys, credential stores, and symbolic links as hard errors.
 
-Mounts can be conditional, like every resource hook — gate `useSkill(...)` on [persistent state](/docs/guide/agent-hooks/#persisted-state) to unlock a skill mid-conversation. The runtime announces catalog changes to the model without invalidating your cached prompt; see [Dynamic resources](/docs/reference/agent-api/#dynamic-resources) for the mechanics.
+Mounts can be conditional, like every resource hook. Gate `useSkill(...)` on [persistent state](/docs/guide/agent-hooks/#persisted-state) to enable a skill mid-conversation. The runtime announces catalog changes to the model without invalidating your cached prompt. See [Dynamic resources](/docs/reference/agent-api/#dynamic-resources) for details.
 
 ## Inline skills with `defineSkill`
 
@@ -111,7 +111,7 @@ export const escalation = defineSkill({
 });
 ```
 
-Pass the result to `useSkill(escalation)` exactly like an import. A definition is equivalent to a skill directory: `instructions` is the `SKILL.md` body, and an optional `files` map carries supporting resources keyed by relative path:
+Pass the result to `useSkill(escalation)` the same way as an import. A definition is equivalent to a skill directory, where `instructions` is the `SKILL.md` body and an optional `files` map carries supporting resources keyed by relative path:
 
 ```ts
 const reviewSkill = defineSkill({
@@ -122,9 +122,9 @@ const reviewSkill = defineSkill({
 });
 ```
 
-`defineSkill` validates the definition and returns it frozen — no packaging happens at definition time. When the skill is first needed, the runtime packages it into the same shape a `SKILL.md` import produces, writing spec-valid frontmatter itself.
+`defineSkill` validates the definition and returns it frozen. No packaging happens at definition time. When the skill is first needed, the runtime packages it into the same structure a `SKILL.md` import produces and writes spec-valid frontmatter itself.
 
-`defineSkill` also converts markdown that isn't named `SKILL.md`. A bare `.md` import loads as a plain string — nothing is packaged — so pass it through `defineSkill` to make it a skill:
+`defineSkill` also converts markdown that isn't named `SKILL.md`. A bare `.md` import loads as a plain string and nothing is packaged, so pass it through `defineSkill` to make it a skill:
 
 ```ts
 import { defineSkill } from '@flue/runtime';
@@ -142,9 +142,9 @@ export const incidents = defineSkill({
 
 ## How activation works
 
-Mounted skills appear in an **Available Skills** section of the system prompt — one line each, name and description. Alongside it, the runtime provides an `activate_skill` tool. When the model judges that a task matches a skill's description, it calls the tool with the skill's name and receives the full instructions as the tool result.
+Mounted skills appear in an **Available Skills** section of the system prompt, one line each with name and description. Alongside it, the runtime provides an `activate_skill` tool. When the model judges that a task matches a skill's description, it calls the tool with the skill's name and receives the full instructions as the tool result.
 
-Because instructions arrive as a tool result, the system prompt never changes when a skill activates, and the provider's cached prompt prefix survives. Activating an unknown name is not an error — the result lists the skills that are available.
+Because instructions arrive as a tool result, the system prompt never changes when a skill activates, and the provider's cached prompt prefix survives. Activating an unknown name is not an error. The result lists the skills that are available.
 
 Because activation is a tool call, your instructions can direct it:
 
@@ -153,19 +153,19 @@ useSkill(refunds);
 return 'Activate the `refunds` skill before handling any refund request.';
 ```
 
-The same steering works from application code. A [harness tool](/docs/guide/tools/#harness-tools)'s `harness.prompt(...)` runs with the agent's rendered configuration — same system prompt, skill catalog, and tools — so naming the skill in the prompt text is enough for the model to activate it there too, workspace-discovered skills included.
+The same steering works from application code. A [harness tool](/docs/guide/tools/#harness-tools)'s `harness.prompt(...)` runs with the agent's rendered configuration (same system prompt, skill catalog, and tools), so naming the skill in the prompt text is enough for the model to activate it there too, workspace-discovered skills included.
 
-For content the agent should _always_ have, don't use a skill: import the markdown as a string and fold it into your instructions, or pass it to [`useInstruction(...)`](/docs/reference/agent-hooks-api/#useinstruction).
+For content the agent should _always_ have, don't use a skill. Import the markdown as a string and fold it into your instructions, or pass it to [`useInstruction(...)`](/docs/reference/agent-hooks-api/#useinstruction).
 
 ## Supporting files at runtime
 
-A packaged skill's supporting files travel inside your application bundle, not the agent's workspace. Nothing is copied into the sandbox: the runtime serves each file read-only at a virtual path, and the activation briefing lists every resource with the exact path to read it from. The model's file-reading tools resolve those paths transparently — including a `read_skill_resource` tool the runtime adds whenever a mounted skill carries supporting files — while the workspace itself stays untouched.
+A packaged skill's supporting files travel inside your application bundle, not the agent's workspace. Nothing is copied into the sandbox. The runtime serves each file read-only at a virtual path, and the activation briefing lists every resource with the exact path to read it from. The model's file-reading tools resolve those paths transparently, and the workspace itself stays untouched. Whenever a mounted skill carries supporting files, the runtime also adds a `read_skill_resource` tool.
 
-The same bundle serves the same files on your laptop, in Node.js, or on Cloudflare — no per-environment filesystem setup, and an agent can never accidentally edit its own skill content.
+The same bundle serves the same files on your laptop, in Node.js, or on Cloudflare. You need no per-environment filesystem setup, and an agent can never accidentally edit its own skill content.
 
 ## Workspace skills
 
-There is one more way an agent with a [sandbox](/docs/guide/sandboxes/) picks up skills: discovery from its workspace. At session start, the runtime scans `.agents/skills/` in the sandbox's working directory, and every valid `<name>/SKILL.md` it finds joins the catalog alongside your declared skills — no import, no `useSkill(...)` call:
+An agent with a [sandbox](/docs/guide/sandboxes/) can also discover skills in its workspace. At session start, the runtime scans `.agents/skills/` in the sandbox's working directory, and every valid `<name>/SKILL.md` it finds joins the catalog alongside your declared skills without an import or a `useSkill(...)` call:
 
 ```text
 <cwd>/.agents/skills/
@@ -173,15 +173,15 @@ There is one more way an agent with a [sandbox](/docs/guide/sandboxes/) picks up
    └─ SKILL.md
 ```
 
-Workspace skills stay in the workspace. Their instructions are read from disk at activation time — so mid-session edits are picked up — and their supporting files are ordinary workspace files the model reads directly. A malformed workspace `SKILL.md` is skipped with a warning rather than failing the session (imported skills, by contrast, are validated strictly at build time, where an error is actionable). A workspace skill whose name collides with a declared skill is an error.
+Workspace skills stay in the workspace. The runtime reads their instructions from disk at activation time, so it picks up mid-session edits. Their supporting files are ordinary workspace files the model reads directly. The runtime skips a malformed workspace `SKILL.md` with a warning instead of failing the session. Imported skills, by contrast, are validated strictly at build time, where an error is actionable. A workspace skill whose name collides with a declared skill is an error.
 
-Use workspace skills when the expertise ships with the workspace — a repository checkout, CI environment, or prepared runtime workspace with its own conventions for any agent that works in it — and declared skills when it belongs to your application.
+Use workspace skills when the expertise ships with the workspace, such as a repository checkout, CI environment, or prepared runtime workspace with its own conventions for any agent that works in it. Use declared skills when the expertise belongs to your application.
 
 ## Next steps
 
 - [Agent Skills specification](https://agentskills.io/specification) — the full `SKILL.md` format, shared across compatible harnesses.
 - [Agent Hooks](/docs/guide/agent-hooks/) — how `useSkill` composes with the rest of an agent's capabilities.
-- [Agent Hooks API](/docs/reference/agent-hooks-api/#useskill) — the full contract for `useSkill`, `defineSkill`, and `SkillDefinition`.
+- [Agent Hooks API](/docs/reference/agent-hooks-api/#useskill) — the full reference for `useSkill`, `defineSkill`, and `SkillDefinition`.
 - [Tools](/docs/guide/tools/) — executable application capabilities, and when a tool beats a skill.
 - [Subagents](/docs/guide/subagents/) — delegate a whole procedure to a specialist agent instead of teaching it.
 - [Sandboxes](/docs/guide/sandboxes/) — the workspace where workspace skills are discovered.

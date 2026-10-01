@@ -89,7 +89,7 @@ import { channel as github } from './channels/github.ts';
 app.route('/channels/github', github.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/github` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/github` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -237,11 +237,11 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
 Every verified non-ping delivery is forwarded with its native
 `@octokit/webhooks-types` payload. `delivery.name` is the `X-GitHub-Event`
 value and discriminates `delivery.payload`, narrowing it to the matching event
-type (for example `name: 'issues'` gives an `IssuesEvent` payload). There is no
-fixed list of supported events and no normalization layer: the payload keeps
+type (for example `name: 'issues'` gives an `IssuesEvent` payload). Flue has no
+fixed list of supported events and does not normalize payloads. The payload keeps
 GitHub's own field names and nesting (`payload.repository.owner.login`,
 `payload.issue.number`, `payload.comment.in_reply_to_id`). Choosing which
-events to act on is application policy — subscribe to them in GitHub and branch
+events to act on is application policy. Subscribe to them in GitHub and branch
 on `delivery.name` (and, where it matters, `delivery.payload.action`) in the
 handler. GitHub `ping` is acknowledged internally and never reaches the
 callback.
@@ -273,7 +273,7 @@ export function Assistant() {
 Assistant.initialData = initialData;
 ```
 
-`initialData` is the instance's creation data: recorded once when the event creates
+`initialData` is the instance's creation data. It is recorded once when the event creates
 the instance and ignored afterward, so the channel passes it on every
 dispatch. The agent's `initialData` static validates the dispatched `initialData` when the
 instance is created; `useInitialData()` returns the parsed value on every

@@ -16,7 +16,7 @@ The blueprint guides your coding agent through installing the test dependencies,
 
 ## Overview
 
-`vitest-evals` adds eval harnesses, judges, normalized reports, and CI reporting to Vitest. The Flue integration evaluates the same public HTTP boundary used by a deployed application rather than importing Flue runtime internals.
+`vitest-evals` adds eval harnesses, judges, normalized reports, and CI reporting to Vitest. The Flue integration evaluates the same public HTTP boundary used by a deployed application instead of importing Flue runtime internals.
 
 The generated harness:
 
@@ -58,7 +58,7 @@ The blueprint adds commands for compact terminal output, detailed tool and usage
 pnpm exec vitest-evals serve vitest-results.json
 ```
 
-The same artifact can be published by the `getsentry/vitest-evals` GitHub Action. Reports can contain prompts, outputs, tool arguments and results, errors, and application metadata; review retention and access requirements before uploading them.
+The same artifact can be published by the `getsentry/vitest-evals` GitHub Action. Reports can contain prompts, outputs, tool arguments and results, errors, and application metadata. Review retention and access requirements before uploading them.
 
 `vitest-evals` does not include a Braintrust reporter. Flue's [Braintrust integration](/docs/ecosystem/tooling/braintrust/) can independently trace the application execution, but those traces do not replace eval cases, assertions, judges, or CI gates.
 

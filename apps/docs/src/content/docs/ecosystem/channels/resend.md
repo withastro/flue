@@ -64,7 +64,7 @@ import { channel as resend } from './channels/resend.ts';
 app.route('/channels/resend', resend.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/resend` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/resend` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -217,7 +217,7 @@ arguments.
 
 The `resend-email:` id is an application convention for one inbound message.
 The package does not expose a conversation helper because Resend's
-`message_id` identifies one message rather than a stable thread root. Define
+`message_id` identifies one message, not a stable thread root. Define
 and persist any reply-grouping policy in application code.
 
 ## Delivery behavior

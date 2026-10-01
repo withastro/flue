@@ -1,6 +1,6 @@
 ---
 title: Turso
-description: Give Flue agents durable, hosted state with Turso — managed, replicated libSQL.
+description: Give Flue agents durable, hosted state with Turso's managed, replicated libSQL.
 package:
   name: '@flue/libsql'
   href: https://www.npmjs.com/package/@flue/libsql
@@ -50,18 +50,18 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 | `TURSO_DATABASE_URL` | **Required** — The database's `libsql://` URL. |
 | `TURSO_AUTH_TOKEN`   | **Required** — Auth token for the database.    |
 
-`createClient` reads these at runtime — they are not baked into the build. For
+`createClient` reads these at runtime; they are not baked into the build. For
 local development, `vite dev` loads the project `.env`, and `flue run --env <file>` loads any
 `.env`-format file. In production, supply them from your platform's secret store.
 
 Turso is hosted, replicated libSQL. The blueprint installs `@flue/libsql` and
 the official `@libsql/client`, and writes a source-root `db.ts` that wraps the
-client with a Turso configuration — it is the **same adapter** as
+client with a Turso configuration. It is the same adapter as
 [`flue add database libsql`](/docs/ecosystem/databases/libsql/), pointed at a Turso
 database. Flue discovers `db.ts` at build time and wires it into the generated
 Node server.
 
-`@flue/libsql` is a **Node.js** adapter. The Cloudflare target uses Durable
+`@flue/libsql` is a Node.js adapter. The Cloudflare target uses Durable
 Object SQLite automatically and rejects a `db.ts` file at build time, so this
 guide applies to Node deployments. See [Database](/docs/guide/database/) for the
 full picture of how state is stored on each target.
@@ -111,13 +111,13 @@ export default libsql({
 ```
 
 Turso serializes writes server-side, so there is no embedded-file concurrency
-concern. The runner shape (`query`, `transaction`, `close`) and the `ResultSet`
+concern. The runner interface (`query`, `transaction`, `close`) and the `ResultSet`
 mapping are explained in the [libSQL guide](/docs/ecosystem/databases/libsql/).
 
 ## Embedded replicas
 
-For lower read latency, Turso supports **embedded replicas** — a local SQLite
-file kept in sync with the remote database, so reads hit local disk and writes
+For lower read latency, Turso supports **embedded replicas**. An embedded
+replica is a local SQLite file kept in sync with the remote database, so reads hit local disk and writes
 forward to Turso. Point `url` at a local file and add `syncUrl`:
 
 ```ts title="src/db.ts"

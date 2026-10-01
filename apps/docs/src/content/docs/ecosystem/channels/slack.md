@@ -51,7 +51,7 @@ export const channel = createSlackChannel({
 });
 ```
 
-The abridged example omits the generated `replyInThread()` tool. The complete blueprint binds that tool in the agent module, so verified app mentions reach a thread-scoped agent instance and replies return to the same thread. Interactivity and slash-command callbacks are optional secondary additions: each callback publishes its corresponding route only when enabled.
+The abridged example omits the generated `replyInThread()` tool. The complete blueprint binds that tool in the agent module, so verified app mentions reach a thread-scoped agent instance and replies return to the same thread. Interactivity and slash-command callbacks are optional secondary additions, and each callback publishes its corresponding route only when enabled.
 
 ## Mount the channel
 
@@ -63,7 +63,7 @@ import { channel as slack } from './channels/slack.ts';
 app.route('/channels/slack', slack.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/slack` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/slack` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -75,8 +75,8 @@ app.route('/channels/slack', slack.route());
 The blueprint installs and configures `@flue/slack` for inbound requests, along
 with Slack's official `@slack/web-api` SDK for making outbound API calls. After
 running the command, you will have a new `src/channels/slack.ts` channel whose
-webhook routes are served wherever `app.ts` mounts `channel.route()` —
-conventionally `/channels/slack/*`.
+webhook routes are served wherever `app.ts` mounts `channel.route()`
+(conventionally `/channels/slack/*`).
 
 ## Supported Webhooks
 
@@ -86,7 +86,7 @@ conventionally `/channels/slack/*`.
 | [Interactivity](https://docs.slack.dev/interactivity/handling-user-interaction/)    | `/channels/slack/interactions` |
 | [Slash commands](https://docs.slack.dev/interactivity/implementing-slash-commands/) | `/channels/slack/commands`     |
 
-Add only the Slack surfaces your application handles.
+Add only the Slack webhooks your application handles.
 
 Omitting a callback from `createSlackChannel()` omits its route. Slack URL
 verification is answered internally after signature verification.
@@ -155,7 +155,7 @@ installation model.
 
 ### Interactions
 
-Enable this surface only when the application handles interactions:
+Enable this route only when the application handles interactions:
 
 ```ts
 export const channel = createSlackChannel({
@@ -186,7 +186,7 @@ context, logs, or durable session history.
 
 ### Commands
 
-Enable this surface only when the application handles slash commands:
+Enable this route only when the application handles slash commands:
 
 ```ts
 export const channel = createSlackChannel({
@@ -250,8 +250,8 @@ export function replyInThread(ref: { channelId: string; threadTs: string }) {
 }
 ```
 
-Bind the destination in trusted code. `data` is the instance's creation data —
-recorded once when the dispatch above creates the instance — so the agent
+Bind the destination in trusted code. `data` is the instance's creation data,
+recorded once when the dispatch above creates the instance, so the agent
 reads the structured thread facts with `useInitialData()` instead of parsing
 them from the instance id:
 

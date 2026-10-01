@@ -104,12 +104,12 @@ verified the configuration.
 
 Use a dedicated Valkey database or pass a stable, unique `keyPrefix` as the
 adapter's second argument. The default is `flue`. Changing it selects a separate
-namespace; it does not move existing keys.
+namespace. It does not move existing keys.
 
 ## Migrations and stored data
 
 Flue runs `migrate()` at startup. It initializes format-version metadata
-idempotently and refuses data from an unsupported newer format; there is no
+idempotently and refuses data from an unsupported newer format. There is no
 separate migration command.
 
 Valkey stores append-only canonical conversation records and compaction facts, immutable attachment payloads, accepted prompts and dispatches, and recovery claims and leases. It does not store session transcript snapshots, sandbox files, external API side effects, secrets, or application business data.
@@ -118,5 +118,5 @@ Valkey stores append-only canonical conversation records and compaction facts, i
 
 Build the Node target, start it against a throwaway correctly configured Valkey,
 create state, restart Flue, and confirm the state reloads. Separately test the
-chosen AOF or snapshot recovery procedure: restarting Flue does not prove that
+chosen AOF or snapshot recovery procedure, because restarting Flue does not prove that
 Valkey survives server loss.

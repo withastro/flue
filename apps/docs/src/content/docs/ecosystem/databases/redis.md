@@ -53,14 +53,14 @@ depends on the deployment's AOF or snapshot configuration.
 | `REDIS_URL` | **Required** — Connection URL for a persistent standalone or single-shard Redis deployment. |
 
 The blueprint installs `@flue/redis` and the official `redis` (node-redis)
-client, then writes a source-root `db.ts`. This is a **Node.js** adapter. The
+client, then writes a source-root `db.ts`. This is a Node.js adapter. The
 Cloudflare target uses Durable Object SQLite and rejects `db.ts`.
 
 Set `REDIS_URL` to a persistent standalone Redis server or managed single-shard
 endpoint. Redis Cluster and cache-only configurations are unsupported. Configure
 `maxmemory-policy noeviction`, plus AOF with an explicit fsync policy and/or
 durable snapshots appropriate to your recovery objective. `noeviction` avoids
-silent eviction; it does not make acknowledged writes durable across server
+silent eviction, but it does not make acknowledged writes durable across server
 loss.
 
 The canonical runner uses the official client:
@@ -100,12 +100,12 @@ verified the configuration.
 
 Use a dedicated Redis database or pass a stable, unique `keyPrefix` as the
 adapter's second argument. The default is `flue`. Changing it selects a separate
-namespace; it does not move existing keys.
+namespace. It does not move existing keys.
 
 ## Migrations and stored data
 
 Flue runs `migrate()` at startup. It initializes format-version metadata
-idempotently and refuses data from an unsupported newer format; there is no
+idempotently and refuses data from an unsupported newer format. There is no
 separate migration command.
 
 Redis stores append-only canonical conversation records and compaction facts, immutable attachment payloads, accepted prompts and dispatches, and recovery claims and leases. It does not store session transcript snapshots, sandbox files, external API side effects, secrets, or application business data.
@@ -114,5 +114,5 @@ Redis stores append-only canonical conversation records and compaction facts, im
 
 Build the Node target, start it against a throwaway correctly configured Redis,
 create state, restart Flue, and confirm the state reloads. Separately test the
-chosen AOF or snapshot recovery procedure: restarting Flue does not prove that
+chosen AOF or snapshot recovery procedure. Restarting Flue does not prove that
 Redis survives server loss.

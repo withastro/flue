@@ -12,9 +12,9 @@ flue update <kind> <name|url> [--print]
 
 ## Description
 
-`flue update` fetches the Markdown implementation guide for a blueprint, for piping to a coding agent that will bring an existing integration up to the current blueprint version. The command does not inspect or modify your project — the guide carries the update instructions, including how to compare the existing integration against the current blueprint and preserve customizations.
+`flue update` fetches the Markdown implementation guide for a blueprint, for piping to a coding agent that will bring an existing integration up to the current blueprint version. The command does not inspect or modify your project. The guide carries the update instructions, including how to compare the existing integration against the current blueprint and preserve customizations.
 
-[`flue add`](/docs/cli/add/) emits the same guide; the two commands differ only in intent and argument handling (`flue update` requires both arguments, while `flue add` alone lists the catalog). Output behavior matches `flue add`: the guide prints to stdout for coding agents or with `--print`.
+[`flue add`](/docs/cli/add/) emits the same guide. The two commands differ only in intent and argument handling. `flue update` requires both arguments, while `flue add` alone lists the catalog. As with `flue add`, the guide prints to stdout for coding agents or with `--print`.
 
 ## Arguments
 

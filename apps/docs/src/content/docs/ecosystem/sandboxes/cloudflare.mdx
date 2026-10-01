@@ -6,7 +6,7 @@ lastReviewedAt: 2026-09-16
 
 import CopyPrompt from '../../../../components/docs/CopyPrompt.astro';
 
-Cloudflare Sandbox uses `@cloudflare/sandbox` to provide a container-backed Linux environment to a Flue application deployed on Cloudflare. This integration is platform-native: it is not an adapter module for a Node-target application.
+Cloudflare Sandbox uses `@cloudflare/sandbox` to provide a container-backed Linux environment to a Flue application deployed on Cloudflare. This is a platform-native integration. It is not an adapter module for a Node-target application.
 
 ## Quickstart
 
@@ -14,7 +14,7 @@ Add container-backed Linux sandbox capability to an existing Flue project with t
 
 <CopyPrompt text="Run `flue add sandbox cloudflare` and follow the blueprint to add a Cloudflare Sandbox to this Flue project." />
 
-Copy this prompt into your coding agent. The blueprint the agent fetches is an implementation guide, not an installer — the agent reads it, then inspects and modifies your project. It may:
+Copy this prompt into your coding agent. The blueprint the agent fetches is an implementation guide, not an installer. The agent reads it, then inspects and modifies your project. It may:
 
 - Install `@cloudflare/sandbox`.
 - Add or update `cloudflare.ts` in the Flue source root.
@@ -23,7 +23,7 @@ Copy this prompt into your coding agent. The blueprint the agent fetches is an i
 - Modify your Flue agent to obtain the sandbox with `getSandbox(...)` and attach it with `useSandbox(...)`.
 - Inspect the existing project structure and avoid overwriting incompatible setup.
 
-If your project currently targets Node, the blueprint will stop and confirm with you before migrating the whole project to the Cloudflare target — Cloudflare Sandbox only runs inside a Worker.
+If your project currently targets Node, the blueprint will stop and confirm with you before migrating the whole project to the Cloudflare target, because Cloudflare Sandbox only runs inside a Worker.
 
 Before you start, check two prerequisites:
 
@@ -32,7 +32,7 @@ Before you start, check two prerequisites:
 
 ## Overview
 
-Cloudflare Sandbox is a Cloudflare target integration rather than a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`; the agent function obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and attaches it with `useSandbox(...)`.
+Cloudflare Sandbox is a Cloudflare target integration, not a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`. The agent function obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and attaches it with `useSandbox(...)`.
 
 ```ts title="src/agents/coding-agent.ts (excerpt)"
 'use agent';
@@ -60,12 +60,12 @@ The blueprint also exports `Sandbox` from the source-root `cloudflare.ts`, adds 
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Cloudflare target                            | **Required** — Runs the platform-native sandbox integration.                                                                 |
 | Workers Paid plan                            | **Required** — Containers, which back the sandbox, are a Workers Paid feature.                                               |
-| Docker (local development only)              | **Required for `vite dev`** — Builds and runs the container image locally; not needed for deployed Workers.                  |
+| Docker (local development only)              | **Required for `vite dev`** — Builds and runs the container image locally. Not needed for deployed Workers.                  |
 | `@cloudflare/sandbox` package                | **Required** — Provides the Sandbox Durable Object and RPC client.                                                           |
 | Container image                              | **Required** — Defines the Linux filesystem and command environment.                                                         |
-| Durable Object/container binding             | **Required on Cloudflare** — Exposes the sandbox through Wrangler platform configuration; it is not an environment variable. |
+| Durable Object/container binding             | **Required on Cloudflare** — Exposes the sandbox through Wrangler platform configuration. It is not an environment variable. |
 | Stable sandbox identity and retention policy | **Required** — Controls lifecycle and reuse for the application.                                                             |
-| Environment-variable credentials             | **Not required** — The platform integration uses Cloudflare bindings and deployment configuration instead.                   |
+| Environment-variable credentials             | **Not required.** The platform integration uses Cloudflare bindings and deployment configuration instead.                    |
 
 Cloudflare Sandbox requires a Worker deployment, Durable Object/container configuration, and a container image. Add the dependency to a Cloudflare-targeted project and export its Durable Object class from your Cloudflare deployment module:
 

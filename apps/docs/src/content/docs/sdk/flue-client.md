@@ -1,6 +1,6 @@
 ---
 title: FlueClient
-description: The Flue Agent SDK conversation client — send(), read(), wait(), abort(), history(), historyBefore(), observe(), and attachmentUrl().
+description: The Flue Agent SDK conversation client and its send(), read(), wait(), abort(), history(), historyBefore(), observe(), and attachmentUrl() methods.
 lastReviewedAt: 2026-07-21
 ---
 
@@ -37,7 +37,7 @@ For chat UIs, `useFlueAgent({ url })` from `@flue/react` wraps this client with 
 send(options: AgentPromptOptions): Promise<AgentSendResult>;
 ```
 
-`POST <conversation url>`. Starts one message delivery and resolves on admission (HTTP 202): the message is durably accepted, not processed. The result does not carry the agent's reply — pass it to [`read()`](#read) for the reply, [`wait()`](#wait) for just the outcome, or render progress with [`observe()`](#observe). The wire body is the `DeliveredMessage` verbatim, with `initialData` and `uid` as reserved top-level siblings.
+`POST <conversation url>`. Starts one message delivery and resolves on admission (HTTP 202), which means the message is durably accepted, not processed. The result does not carry the agent's reply. Pass it to [`read()`](#read) for the reply or to [`wait()`](#wait) for the outcome only, or render progress with [`observe()`](#observe). The wire body is the `DeliveredMessage` verbatim, with `initialData` and `uid` as reserved top-level siblings.
 
 ### `AgentPromptOptions`
 
@@ -50,12 +50,12 @@ interface AgentPromptOptions {
 }
 ```
 
-| Field         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `message`     | The message to deliver.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `initialData` | Instance-creation data, consulted only when this send creates the conversation: validated against the agent's `initialData` schema static when the agent declares one, recorded once, and read inside the agent with `useInitialData()` (see [Passing data to the agent](/docs/guide/agent-hooks/#passing-data-to-the-agent)). Ignored when the send continues an existing conversation; pair with `uid: null` to error instead.                                                                                                                    |
-| `uid`         | Send condition. Sends are conditional requests, with the instance uid playing the ETag. Omitted: unconditional — continues the instance or creates it. A string (a previous result's `uid`): continue only that incarnation. A missing instance or mismatched uid rejects with a 404 `FlueApiError` (`agent_instance_not_found`) and nothing is delivered. Cannot be combined with `initialData`. `null`: create only. An existing instance rejects with a 409 `FlueApiError` (`agent_instance_exists`, the existing uid in `body.error.meta.uid`). |
-| `signal`      | Aborts the HTTP request. It does not abort agent work; that is [`abort()`](#abort).                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Field         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `message`     | The message to deliver.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `initialData` | Instance-creation data, consulted only when this send creates the conversation: validated against the agent's `initialData` schema static when the agent declares one, recorded once, and read inside the agent with `useInitialData()` (see [Passing data to the agent](/docs/guide/agent-hooks/#passing-data-to-the-agent)). Ignored when the send continues an existing conversation; pair with `uid: null` to error instead.                                                                                                                   |
+| `uid`         | Send condition. Sends are conditional requests, with the instance uid playing the ETag. Omitted: unconditional; continues the instance or creates it. A string (a previous result's `uid`): continue only that incarnation. A missing instance or mismatched uid rejects with a 404 `FlueApiError` (`agent_instance_not_found`) and nothing is delivered. Cannot be combined with `initialData`. `null`: create only. An existing instance rejects with a 409 `FlueApiError` (`agent_instance_exists`, the existing uid in `body.error.meta.uid`). |
+| `signal`      | Aborts the HTTP request. It does not abort agent work; that is [`abort()`](#abort).                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### `DeliveredMessage`
 
@@ -71,7 +71,7 @@ type DeliveredMessage =
     };
 ```
 
-The message delivered into the agent's session — the same unified shape the server accepts from `dispatch()`. `kind: 'user'` is a direct user chat turn addressing the agent 1:1. `kind: 'signal'` is a structured event — webhooks, schedules, and multi-user surfaces (a Slack thread, a GitHub issue) where the agent participates as one member and a `user` message would conflate other participants with the agent's own user.
+The message delivered into the agent's session. The server accepts the same unified shape from `dispatch()`. `kind: 'user'` is a direct user chat turn addressing the agent 1:1. `kind: 'signal'` is a structured event, such as a webhook, a schedule, or a message from a multi-user channel (a Slack thread, a GitHub issue). In a multi-user channel the agent participates as one member, and a `user` message would conflate other participants with the agent's own user.
 
 Signal fields:
 
@@ -102,7 +102,7 @@ interface DeliveredDocumentAttachment {
 }
 ```
 
-One attachment on a `kind: 'user'` message: an image, or a document (PDF) forwarded to the model as native document content. Native document input is supported on Anthropic Messages, Google Generative AI / Vertex, and OpenAI (and Azure OpenAI) Responses models; on any other model API the document is replaced in model context with a text placeholder saying it was omitted (and the runtime logs a one-time warning per API).
+One attachment on a `kind: 'user'` message. It is an image, or a document (PDF) forwarded to the model as native document content. Anthropic Messages, Google Generative AI / Vertex, and OpenAI (and Azure OpenAI) Responses models support native document input. On any other model API, the runtime replaces the document in model context with a text placeholder that says it was omitted, and logs a one-time warning per API.
 
 | Field      | Description                                                                                                   |
 | ---------- | ------------------------------------------------------------------------------------------------------------- |
@@ -147,19 +147,19 @@ interface AgentReadResult {
 }
 ```
 
-Awaits one submission's settlement and resolves with its reply — the composed one-shot round trip:
+Awaits one submission's settlement and resolves with its reply. This composes the one-shot round trip:
 
 ```ts
 const admission = await conversation.send({ message });
 const reply = await conversation.read(admission);
 ```
 
-The target is the admission `send()` resolved with, or a bare submission id. The bare form is the **re-attach** path: it follows the conversation from the stream origin, so any process holding just the id can read the reply at any later time, and a submission that already settled resolves immediately — persist the small admission object (or just its `submissionId`) and a crashed script's replacement picks up where the lost await stopped.
+The target is the admission `send()` resolved with, or a bare submission id. The bare form is the **re-attach** path. It follows the conversation from the stream origin, so any process that holds only the id can read the reply at any later time, and a submission that already settled resolves immediately. Persist the small admission object (or only its `submissionId`), and a crashed script's replacement picks up where the lost await stopped.
 
-- Rejects with [`FlueExecutionError`](/docs/sdk/errors/#flueexecutionerror) when the submission settles failed or aborted, exactly as `wait()` does; the reply is fetched only after a completed settlement.
+- Rejects with [`FlueExecutionError`](/docs/sdk/errors/#flueexecutionerror) when the submission settles failed or aborted, as `wait()` does; the reply is fetched only after a completed settlement.
 - The reply fields are [`readSubmissionReply()`](#readsubmissionreply)'s projection (text, named data parts, metadata) plus the settled `submissionId`; `uid` carries over when the target admission had one.
-- `options` are [`AgentWaitOptions`](#agentwaitoptions) — `signal` stops the read locally (the submission keeps running; a durable stop is `abort()`), and `onEvent` streams chunks while waiting.
-- Internally this is `wait()` plus one `history()` read. Use those primitives directly when you only need the outcome, or when you already hold the materialized conversation via `observe()` — `readSubmissionReply()` applies to its state with no extra fetch.
+- `options` are [`AgentWaitOptions`](#agentwaitoptions). `signal` stops the read locally (the submission keeps running; a durable stop is `abort()`), and `onEvent` streams chunks while waiting.
+- Internally this is `wait()` plus one `history()` read. Use those methods directly when you only need the outcome. If you already hold the materialized conversation from `observe()`, apply `readSubmissionReply()` to its state with no extra fetch.
 
 ## `wait()`
 
@@ -169,14 +169,14 @@ wait(admission: AgentSendResult, options?: AgentWaitOptions): Promise<void>;
 
 Awaits the admitted submission's completion by following the conversation's updates stream at `admission.streamUrl` from `admission.offset` (through the client's `fetch` and headers, so custom transports and auth apply). Settlement chunks for other submissions on the same conversation are ignored.
 
-The wait is an observer, not a driver: if the waiting process disappears, the submission still settles server-side, and the settlement is durably recorded on the conversation. Recover the outcome by calling `wait()` again with the same admission, or by reading it from `history()`/`observe()`.
+The wait only observes the submission. If the waiting process disappears, the submission still settles server-side, and the settlement is durably recorded on the conversation. Recover the outcome by calling `wait()` again with the same admission, or by reading it from `history()`/`observe()`.
 
 - Resolves `void` when the submission settles `completed`.
 - Rejects with [`FlueExecutionError`](/docs/sdk/errors/#flueexecutionerror) (`failure: 'failed'` or `'aborted'`) when it settles failed or aborted; the error's `error` property carries the serialized failure detail when the server recorded one.
 - Rejects with `FlueExecutionError` (`failure: 'terminal_event_missing'`) when the stream ends without this submission's settlement.
 - Rejects with the signal's reason when `options.signal` aborts (a `DOMException` named `AbortError` when the abort carried no reason).
 
-The agent's reply is not returned — settlement chunks carry only the outcome, which makes `wait()` the cheaper call when the outcome is all you need. For the reply, use [`read()`](#read), or extract it from a snapshot yourself with [`readSubmissionReply()`](#readsubmissionreply).
+The agent's reply is not returned. Settlement chunks carry only the outcome, so `wait()` is the cheaper call when you need only the outcome. For the reply, use [`read()`](#read), or extract it from a snapshot yourself with [`readSubmissionReply()`](#readsubmissionreply).
 
 ### `AgentWaitOptions`
 
@@ -188,11 +188,11 @@ interface AgentWaitOptions {
 }
 ```
 
-| Field            | Description                                                                                                                                                                                                                                                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `signal`         | Cancels the wait and its stream connection. The submission itself keeps running; stopping the work is [`abort()`](#abort).                                                                                                                                                                                                                   |
-| `backoffOptions` | Retry behavior for stream connection attempts (`BackoffOptions` from `@durable-streams/client`, re-exported by the SDK).                                                                                                                                                                                                                     |
-| `onEvent`        | Invoked for each conversation stream chunk while waiting and awaited before the next chunk is processed. Suited to progress output in scripts; prefer `observe()` for maintained UI state. `ConversationStreamChunk` is exported for first-party presenters but is not stable application API — see [Events and records](/docs/sdk/events/). |
+| Field            | Description                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal`         | Cancels the wait and its stream connection. The submission itself keeps running; stopping the work is [`abort()`](#abort).                                                                                                                                                                                                                  |
+| `backoffOptions` | Retry behavior for stream connection attempts (`BackoffOptions` from `@durable-streams/client`, re-exported by the SDK).                                                                                                                                                                                                                    |
+| `onEvent`        | Invoked for each conversation stream chunk while waiting and awaited before the next chunk is processed. Suited to progress output in scripts; prefer `observe()` for maintained UI state. `ConversationStreamChunk` is exported for first-party presenters but is not stable application API; see [Events and records](/docs/sdk/events/). |
 
 ## `abort()`
 
@@ -200,7 +200,7 @@ interface AgentWaitOptions {
 abort(options?: { signal?: AbortSignal }): Promise<AgentAbortResult>;
 ```
 
-`POST <conversation url>/abort`. Aborts all in-flight and queued durable work for the conversation — the currently running submission and any queued behind it. Resolves once the abort intent is recorded; the work settles to the distinct `aborted` outcome asynchronously. Observe that settlement via `wait()` (which rejects with `failure: 'aborted'`), `observe()`, or `history()`. Work that has already settled is not affected — an abort that loses the race to a finished response leaves it settled `completed`.
+`POST <conversation url>/abort`. Aborts all in-flight and queued durable work for the conversation, both the currently running submission and any queued behind it. Resolves once the abort intent is recorded; the work settles to the distinct `aborted` outcome asynchronously. Observe that settlement via `wait()` (which rejects with `failure: 'aborted'`), `observe()`, or `history()`. Work that has already settled is not affected. An abort that loses the race to a finished response leaves it settled `completed`.
 
 | Field    | Description              |
 | -------- | ------------------------ |
@@ -224,7 +224,7 @@ interface AgentAbortResult {
 history(options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
 ```
 
-`GET <conversation url>?view=history`. Reads one materialized conversation snapshot — a point-in-time read with no live updates (for those, use [`observe()`](#observe)). A missing conversation rejects with a 404 `FlueApiError`. Before returning, the SDK resolves a ready-to-use `url` onto every durably recorded `file` part (see [`attachmentUrl()`](#attachmenturl)).
+`GET <conversation url>?view=history`. Reads one materialized conversation snapshot. This is a point-in-time read with no live updates; for those, use [`observe()`](#observe). A missing conversation rejects with a 404 `FlueApiError`. Before returning, the SDK resolves a ready-to-use `url` onto every durably recorded `file` part (see [`attachmentUrl()`](#attachmenturl)).
 
 ```ts
 interface FlueConversationHistoryOptions {
@@ -238,7 +238,7 @@ interface FlueConversationHistoryOptions {
 | `limit`  | Read only the newest `limit` messages (a positive integer). The snapshot keeps the head `offset` and every settlement, and adds a [`before`](#flueconversationsnapshot) cursor for [`historyBefore()`](#historybefore). `limit` counts every message, hidden and diagnostic ones included, so it is not a count of rendered rows. The window can hold more than `limit` messages: it always reaches back to include a response that is still streaming above messages delivered after it. Omit to read the whole conversation. |
 | `signal` | Aborts the request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
-A bounded read bounds the message (transcript) portion of the response, which dominates its size in long-running conversations. It is not a fixed size bound: settlements always ship whole, since clients derive whether a submission is still active from them, and they grow with the conversation. Nor does it reduce the runtime's own work, which materializes the conversation either way. A runtime that predates bounded history ignores `limit` and returns the whole conversation without a `before` field.
+A bounded read bounds the message (transcript) portion of the response, which dominates its size in long-running conversations. It is not a fixed size bound. Settlements always ship whole, since clients derive whether a submission is still active from them, and they grow with the conversation. Nor does it reduce the runtime's own work, which materializes the conversation either way. A runtime that predates bounded history ignores `limit` and returns the whole conversation without a `before` field.
 
 ### `FlueConversationSnapshot`
 
@@ -253,12 +253,12 @@ interface FlueConversationSnapshot {
 }
 ```
 
-A materialized conversation read at a durable-stream offset — the whole transcript, or its newest messages on a bounded read.
+A materialized conversation read at a durable-stream offset. It holds the whole transcript, or its newest messages on a bounded read.
 
 | Field         | Description                                                                                                                                                                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `v`           | Snapshot format version.                                                                                                                                                                                                                           |
-| `offset`      | Opaque durable-stream checkpoint at which the snapshot was materialized. Pass it back only through Flue's own observation machinery; `observe()` manages it internally.                                                                            |
+| `offset`      | Opaque durable-stream checkpoint at which the snapshot was materialized. Pass it back only through Flue's own observation APIs; `observe()` manages it internally.                                                                                 |
 | `messages`    | The conversation transcript, in order.                                                                                                                                                                                                             |
 | `settlements` | Terminal outcomes of the conversation's tracked submissions. Always the whole conversation's settlements, even on a bounded read.                                                                                                                  |
 | `before`      | Present only on bounded reads: an opaque cursor for [`historyBefore()`](#historybefore), or `null` when `messages` starts at the beginning of the conversation. Do not construct or parse it: a cursor names one message in one stream generation. |
@@ -281,20 +281,20 @@ interface FlueConversationMessage {
 }
 ```
 
-One message in a materialized conversation. An assistant message is one whole response: every model step of a tracked submission (text, tool calls, tool results, more text) accumulates as parts of a single message, in stream order — the same one-message-per-response shape as the AI SDK's `UIMessage`.
+One message in a materialized conversation. An assistant message is one whole response. Every model step of a tracked submission (text, tool calls, tool results, more text) accumulates as parts of a single message, in stream order. This matches the one-message-per-response model of the AI SDK's `UIMessage`.
 
 | Field          | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`           | Stable message identity; for an assistant response, the first step's message id.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `role`         | Coarse render lane, following the standard chat convention so a generic renderer can lay out a transcript. `system` covers every non-chat, non-answer message (internal control input and runtime advisories).                                                                                                                                                                                                                                                                                                                                          |
 | `purpose`      | Stable semantic classification, independent of rendered text: `user` is public chat, `assistant` is an answer, `dispatch` is internal dispatch/control input, `advisory` is a runtime advisory. The union may widen as the runtime grows typed agent-activity signals.                                                                                                                                                                                                                                                                                  |
-| `display`      | How a transcript UI should treat the message: `visible` for primary chat, `diagnostic` for an activity/diagnostics panel, `hidden` for runtime plumbing that should not normally be shown.                                                                                                                                                                                                                                                                                                                                                              |
+| `display`      | How a transcript UI should treat the message: `visible` for primary chat, `diagnostic` for an activity/diagnostics panel, `hidden` for internal runtime messages that should not normally be shown.                                                                                                                                                                                                                                                                                                                                                     |
 | `submissionId` | Present on messages produced by a tracked submission.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `turnId`       | Per-turn grouping identity, shared by every message recorded within one model round-trip; absent on messages recorded outside a turn.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `signal`       | Typed detail for a message projected from an internal runtime signal; present only on `system`-role messages.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `settlement`   | Structured settlement marker; present only on the terminal advisory the runtime appends when a submission settles `failed` or `aborted`, with the message's `submissionId` naming the settled submission. Completed submissions get no marker — the assistant reply is the marker — and the snapshot's `settlements` remains the programmatic outcome index.                                                                                                                                                                                            |
+| `settlement`   | Structured settlement marker; present only on the terminal advisory the runtime appends when a submission settles `failed` or `aborted`, with the message's `submissionId` naming the settled submission. Completed submissions get no marker (the assistant reply is the marker), and the snapshot's `settlements` remains the programmatic outcome index.                                                                                                                                                                                             |
 | `timestamp`    | Server-authored capture time (ISO 8601) of the durable record behind the message, present for every role and for existing conversations. For a `user` or `system` message it is when the input or signal was applied to the conversation (not when the submission was accepted); for an assistant response it is when the response's first step started. Absent on the optimistic echo `useFlueAgent` renders before the server confirms a send. Server wall-clock: not guaranteed unique or monotonic, so order by array position, never by timestamp. |
-| `metadata`     | Entirely agent-authored: whatever the agent's `useResponseStart`/`useResponseFinish` hooks return, deep-merged in call order. The runtime stamps nothing into it — keys like `usage` or `model` are app conventions, present only when the agent attaches them. The server's capture time lives on `timestamp`.                                                                                                                                                                                                                                         |
+| `metadata`     | Agent-authored: whatever the agent's `useResponseStart`/`useResponseFinish` hooks return, deep-merged in call order. The runtime stamps nothing into it. Keys like `usage` or `model` are app conventions, present only when the agent attaches them. The server's capture time lives on `timestamp`.                                                                                                                                                                                                                                                   |
 
 ### `FlueConversationPart`
 
@@ -323,7 +323,7 @@ One renderable part of a message. A part only ever carries materialized content 
 | Part                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `text` / `reasoning` | Streamed model output. `state` is `'streaming'` while deltas are still arriving and `'done'` once the block closes.                                                                                                                                                                                                                                                                                                                       |
-| `data-<name>`        | A named, client-facing data part streamed by the agent's `useDataWriter` writers (AI SDK convention: `data-<name>` type, payload on `data`). The name is the part's identity within the response — a later write updates the part in place, keeping its position. See [Streaming data to the client](/docs/guide/agent-hooks/#streaming-data-to-the-client).                                                                              |
+| `data-<name>`        | A named, client-facing data part streamed by the agent's `useDataWriter` writers (AI SDK convention: `data-<name>` type, payload on `data`). The name is the part's identity within the response: a later write updates the part in place, keeping its position. See [Streaming data to the client](/docs/guide/agent-hooks/#streaming-data-to-the-client).                                                                               |
 | `file`               | One attachment. `id` is the stable attachment id, present once the attachment is durably recorded and absent on a local optimistic echo. `url` is ready to use as an `<img>`/`<a>` source: the SDK fills it for recorded attachments, and an optimistic echo carries a `data:` URL preview; it may be absent when the bytes are not yet resolvable. `size` is in bytes, when known. `filename` is present when the uploader provided one. |
 | `dynamic-tool`       | One tool call, keyed by `toolCallId`. `input-available` means the call is recorded and its result pending; `output-available` carries the result on `output`; `output-error` carries the failure text on `errorText`. `durationMs` is the tool-handler execution time, present once the outcome is known (absent on outcomes recorded before the field shipped).                                                                          |
 
@@ -362,7 +362,7 @@ interface FlueConversationHistoryPage {
 }
 ```
 
-`GET <conversation url>?view=history&before=<cursor>`. Reads the messages older than a `before` cursor — from a bounded [`history()`](#history) snapshot, a bounded [`observe()`](#observe) state, or a previous page — oldest first. `limit` (required) is the page size: at most that many messages, the newest of them. The page's own `before` continues backward; `null` means the start of the conversation was reached. Pages carry no offset and no settlements: they are not checkpoints, and the snapshot or observation that produced the cursor already holds every settlement.
+`GET <conversation url>?view=history&before=<cursor>`. Reads the messages older than a `before` cursor, oldest first. The cursor comes from a bounded [`history()`](#history) snapshot, a bounded [`observe()`](#observe) state, or a previous page. `limit` (required) is the page size, so a page holds at most that many messages, the newest of them. The page's own `before` continues backward; `null` means the start of the conversation was reached. Pages carry no offset and no settlements because they are not checkpoints, and the snapshot or observation that produced the cursor already holds every settlement.
 
 ```ts
 const page = await client.history({ limit: 50 });
@@ -394,20 +394,20 @@ interface AgentSubmissionReply {
 }
 ```
 
-A pure function (no I/O, not a client method) that extracts one submission's reply from a materialized conversation — a `history()` snapshot or an `observe()` state. It is the projection behind [`read()`](#read); reach for it directly when you already hold the conversation and want no extra fetch:
+A pure function (no I/O, not a client method) that extracts one submission's reply from a materialized conversation (a `history()` snapshot or an `observe()` state). It is the projection behind [`read()`](#read); reach for it directly when you already hold the conversation and want no extra fetch:
 
 ```ts
 const state = observation.getSnapshot().conversation;
 const reply = readSubmissionReply(state, admission.submissionId);
 ```
 
-The reply is the final assistant message stamped with the given `submissionId`. A submission that joined a busy response settles under the host's response, so when the submission produced no assistant message of its own, the conversation's last assistant message is the coalesced reply that answered it — prefer this helper over hand-picking `messages.at(-1)`, which silently reads the wrong message on a busy conversation.
+The reply is the final assistant message stamped with the given `submissionId`. A submission that joined a busy response settles under the host's response, so when the submission produced no assistant message of its own, the conversation's last assistant message is the coalesced reply that answered it. Prefer this helper over hand-picking `messages.at(-1)`, which silently reads the wrong message on a busy conversation.
 
 - `text` — the reply's text parts joined with blank lines; `''` when none.
 - `data` — named client data parts (`useDataWriter`) on the reply message, keyed by part name, each in emit order.
 - `metadata` — agent-authored response metadata, when present.
 
-`settlements` is required, so a [`historyBefore()`](#historybefore) page (which carries none) is not accepted: a page is a slice of older history, not a conversation to read a reply from. The last-assistant-message fallback for legacy settlements applies only to a complete conversation: an unbounded snapshot or state, or a bounded one whose `before` is `null`. On a bounded window with older messages unloaded (`before` is a cursor), only replies inside the window resolve. The fallback is skipped, since that message may belong to another submission, and the reply resolves empty instead. `read()` always reads the whole conversation.
+`settlements` is required, so a [`historyBefore()`](#historybefore) page (which carries none) is not accepted. A page is a slice of older history, and a reply cannot be read from it. The last-assistant-message fallback for legacy settlements applies only to a complete conversation, meaning an unbounded snapshot or state, or a bounded one whose `before` is `null`. On a bounded window with older messages unloaded (`before` is a cursor), only replies inside the window resolve. The fallback is skipped, since that message may belong to another submission, and the reply resolves empty instead. `read()` always reads the whole conversation.
 
 The same projection backs the runtime's `init().read()`, so a reply read over HTTP and one read in-process agree.
 
@@ -421,12 +421,12 @@ Observes the materialized conversation across history catch-up and live updates.
 
 On start, the observation reads one history snapshot, publishes it, then follows the conversation's updates stream from the snapshot's offset, reducing each chunk into the maintained [`FlueConversationState`](#flueconversationstate). Failure handling:
 
-- A stream failure or unexpected end publishes phase `connecting` (with the error) and retries with exponential backoff — 1 s doubling per attempt, capped at 30 s — rehydrating a fresh snapshot rather than resuming incrementally. The attempt counter resets on every applied chunk and successful hydration.
-- HTTP 400, 401, and 403 are fatal: phase `error`, no automatic retry. `refresh()` tries again.
+- A stream failure or unexpected end publishes phase `connecting` (with the error) and retries with exponential backoff (1 s, doubling per attempt, capped at 30 s). Each retry rehydrates a fresh snapshot instead of resuming incrementally. The attempt counter resets on every applied chunk and successful hydration.
+- HTTP 400, 401, and 403 are fatal and publish phase `error` with no automatic retry. `refresh()` tries again.
 - A 404 on the history read publishes phase `absent` (the conversation does not exist yet). The observation does not poll for it appearing; call `refresh()` to re-check.
 - Aborting `options.signal` or calling `close()` publishes the terminal phase `closed`.
 
-With `limit`, the observation hydrates only the newest `limit` messages. The observed window then grows forward with live updates and never shrinks: a rehydration after a reconnect reads from the window's oldest message through the head, so no gap opens below it, and `conversation-reset` updates (sent after compaction, for example) are cut to the same window by the runtime, or on the client by runtimes that cannot. The window may hold more than `limit` messages, because it always includes every message that can still receive live updates. The state's [`before`](#flueconversationstate) cursor reads older messages with [`historyBefore()`](#historybefore); keep those pages alongside the observation and render them before its messages. The cursor stays the same for the life of the window. If it changes, the observation has re-based on a fresh newest window, and pages loaded with the previous cursor should be discarded. That happens when the stream was reset and regrown (detected even when the new generation reuses message ids), when a reset no longer contains the window, or when `refresh()` was called. Settlements always cover the whole conversation.
+With `limit`, the observation hydrates only the newest `limit` messages. The observed window then grows forward with live updates and never shrinks. A rehydration after a reconnect reads from the window's oldest message through the head, so no gap opens below it, and `conversation-reset` updates (sent after compaction, for example) are cut to the same window by the runtime, or on the client by runtimes that cannot. The window may hold more than `limit` messages, because it always includes every message that can still receive live updates. The state's [`before`](#flueconversationstate) cursor reads older messages with [`historyBefore()`](#historybefore); keep those pages alongside the observation and render them before its messages. The cursor stays the same for the life of the window. If it changes, the observation has re-based on a fresh newest window, and pages loaded with the previous cursor should be discarded. That happens when the stream was reset and regrown (detected even when the new generation reuses message ids), when a reset no longer contains the window, or when `refresh()` was called. Settlements always cover the whole conversation.
 
 ```ts
 const observation = client.observe({ limit: 50, live: 'sse' });
@@ -442,7 +442,7 @@ async function loadOlder() {
 }
 ```
 
-Chunk application is safe under at-least-once redelivery: every chunk carries a monotonic position, and chunks at or below the last applied position are dropped, so a replayed batch (an SSE reconnect) never double-applies.
+Chunk application is safe under at-least-once redelivery because every chunk carries a monotonic position, and chunks at or below the last applied position are dropped, so a replayed batch (an SSE reconnect) never double-applies.
 
 `getSnapshot`/`subscribe` match React's `useSyncExternalStore` contract, and each published update is a new snapshot object identity. `useFlueAgent` from `@flue/react` builds on this method; see [React](/docs/guide/react/).
 
@@ -488,12 +488,12 @@ interface AgentConversationObservation {
 }
 ```
 
-| Method                | Description                                                                                                                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getSnapshot()`       | The current snapshot; a new object per published update.                                                                                                                                                               |
-| `subscribe(listener)` | Registers a change listener; the first call starts the observation. Returns an unsubscribe function. Unsubscribing removes the listener but does not stop the underlying stream — only `close()` or the `signal` does. |
-| `refresh()`           | Drops the current connection and rehydrates from a fresh history snapshot. Use it to re-check an `absent` conversation or retry after a fatal `error`. No-op once closed.                                              |
-| `close(reason)`       | Terminally stops the observation and publishes phase `closed`; a provided reason is normalized to an `Error` and published on the snapshot's `error`.                                                                  |
+| Method                | Description                                                                                                                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getSnapshot()`       | The current snapshot; a new object per published update.                                                                                                                                                              |
+| `subscribe(listener)` | Registers a change listener; the first call starts the observation. Returns an unsubscribe function. Unsubscribing removes the listener but does not stop the underlying stream; only `close()` or the `signal` does. |
+| `refresh()`           | Drops the current connection and rehydrates from a fresh history snapshot. Use it to re-check an `absent` conversation or retry after a fatal `error`. No-op once closed.                                             |
+| `close(reason)`       | Terminally stops the observation and publishes phase `closed`; a provided reason is normalized to an `Error` and published on the snapshot's `error`.                                                                 |
 
 ### `AgentConversationObservationSnapshot`
 
@@ -540,7 +540,7 @@ interface FlueConversationState {
 }
 ```
 
-The live materialized conversation maintained by `observe()` — [`FlueConversationSnapshot`](#flueconversationsnapshot) without the `v`/`offset` envelope (the offset lives on the observation snapshot). `before` is present only on a bounded `observe({ limit })`: the cursor for the messages older than the observed window, or `null` when the window reaches the start of the conversation.
+The live materialized conversation maintained by `observe()`. It is [`FlueConversationSnapshot`](#flueconversationsnapshot) without the `v`/`offset` envelope (the offset lives on the observation snapshot). `before` is present only on a bounded `observe({ limit })`, where it holds the cursor for the messages older than the observed window, or `null` when the window reaches the start of the conversation.
 
 ## `attachmentUrl()`
 
@@ -548,6 +548,6 @@ The live materialized conversation maintained by `observe()` — [`FlueConversat
 attachmentUrl(attachmentId: string): string;
 ```
 
-Returns the absolute URL for one `file` part's attachment bytes — `<conversation url>/attachments/<attachmentId>`, with the id URL-encoded — suitable as an `<img>`/`<a>` source. The route is part of every mounted agent router, accepts `GET` only, and returns 404 for an unknown attachment id.
+Returns the absolute URL for one `file` part's attachment bytes, suitable as an `<img>`/`<a>` source. The URL is `<conversation url>/attachments/<attachmentId>`, with the id URL-encoded. The route is part of every mounted agent router, accepts `GET` only, and returns 404 for an unknown attachment id.
 
-No request is made and no auth is attached: the returned string is only a URL, so the request made with it must itself satisfy whatever middleware guards the mount. You rarely need this method directly — `history()` and `observe()` resolve `url` onto every durably recorded `file` part already. Over a Cloudflare service binding the URL's host is the placeholder origin; forward it through the same fetcher (see [the service-binding guide](/docs/guide/cloudflare-target/#calling-a-private-agent-over-a-service-binding)).
+No request is made and no auth is attached. The returned string is only a URL, so the request made with it must itself satisfy whatever middleware guards the mount. You rarely need this method directly, since `history()` and `observe()` already resolve `url` onto every durably recorded `file` part. Over a Cloudflare service binding the URL's host is the placeholder origin; forward it through the same fetcher (see [the service-binding guide](/docs/guide/cloudflare-target/#calling-a-private-agent-over-a-service-binding)).

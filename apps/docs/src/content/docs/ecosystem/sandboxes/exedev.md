@@ -71,7 +71,7 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevAdapterOptions): S
 }
 ```
 
-Pass an SSH-reachable VM hostname or `ExeDevVm` to `exedev(...)` and assign the returned factory to an agent's `sandbox` property. Flue uses the detected remote home directory when available; `timeoutMs` remains in milliseconds and closes the SSH command stream at the deadline, returning exit code 124. File removal uses SFTP directly, so recursive and force options are rejected before mutation rather than emulated with a one-off shell command.
+Pass an SSH-reachable VM hostname or `ExeDevVm` to `exedev(...)` and assign the returned factory to an agent's `sandbox` property. Flue uses the detected remote home directory when available. `timeoutMs` stays in milliseconds. At the deadline, the adapter closes the SSH command stream and returns exit code 124. File removal uses SFTP directly, so the adapter rejects recursive and force options before mutation. It does not emulate them with a one-off shell command.
 
 ## Configure
 
@@ -91,7 +91,7 @@ Pass an SSH-reachable VM hostname or `ExeDevVm` to `exedev(...)` and assign the 
 
 ## Choose this adapter when
 
-Use exe.dev when a Node-hosted Flue application should operate inside a VM you reach through SSH/SFTP. The adapter blueprint includes optional lifecycle helpers, but the sandbox adapter itself is designed around a VM your application owns.
+Use exe.dev when a Node-hosted Flue application should operate inside a VM you reach through SSH/SFTP. The adapter blueprint includes optional lifecycle helpers, but the sandbox adapter itself expects a VM your application owns.
 
 Treat SSH keys and provider tokens as server-side secrets. Decide whether agent instances share or allocate VMs, and clean up application-owned VMs according to your retention policy.
 

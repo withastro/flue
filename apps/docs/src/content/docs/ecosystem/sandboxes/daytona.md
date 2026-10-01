@@ -45,7 +45,7 @@ export function daytona(sandbox: DaytonaSandbox): SandboxFactory {
 }
 ```
 
-Pass an initialized Daytona `Sandbox` to `daytona(...)`, then pass the returned factory to the agent's `useSandbox(...)` call. Flue uses the provider's working directory as the workspace root, exposes Daytona filesystem and process operations through the session, preserves Daytona's available file metadata, and rounds millisecond command deadlines up to the SDK's whole-second timeout. Daytona supports recursive deletion but not force semantics, so the adapter rejects `force` before deletion. Your application remains responsible for sandbox creation and lifecycle.
+Pass an initialized Daytona `Sandbox` to `daytona(...)`, then pass the returned factory to the agent's `useSandbox(...)` call. Flue uses the provider's working directory as the workspace root and exposes Daytona filesystem and process operations through the session. It keeps the file metadata Daytona provides, and it rounds millisecond command deadlines up to the SDK's whole-second timeout. Daytona supports recursive deletion but not force semantics, so the adapter rejects `force` before deletion. Your application remains responsible for sandbox creation and lifecycle.
 
 ## Configure
 

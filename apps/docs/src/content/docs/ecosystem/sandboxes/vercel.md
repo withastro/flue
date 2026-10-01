@@ -4,7 +4,7 @@ description: Connect a Flue agent to an application-owned Vercel Sandbox environ
 lastReviewedAt: 2026-07-21
 ---
 
-The Vercel Sandbox adapter adapts an initialized `@vercel/sandbox` `Sandbox` into Flue's sandbox interface. Use it when application code should execute agent work inside a Vercel-managed sandbox rather than on its host filesystem.
+The Vercel Sandbox adapter adapts an initialized `@vercel/sandbox` `Sandbox` into Flue's sandbox interface. Use it when application code should execute agent work inside a Vercel-managed sandbox instead of on its host filesystem.
 
 ## Quickstart
 
@@ -16,7 +16,7 @@ flue add sandbox vercel
 
 ## Overview
 
-The blueprint installs `@vercel/sandbox` when needed and creates `sandboxes/vercel.ts` in your source-root. The generated adapter accepts an initialized Vercel `Sandbox`; authentication, runtime selection, retention, and cleanup remain application-owned.
+The blueprint installs `@vercel/sandbox` when needed and creates `sandboxes/vercel.ts` in your source-root. The generated adapter accepts an initialized Vercel `Sandbox`. Authentication, runtime selection, retention, and cleanup remain application-owned.
 
 ```ts title="<source-root>/sandboxes/vercel.ts (abridged)"
 // flue-blueprint: sandbox/vercel@1

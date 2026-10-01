@@ -70,14 +70,14 @@ runtime as `SUPABASE_DATABASE_URL`:
 The provider-specific environment variable makes the secret's source clear. If
 your project already uses another database variable convention, use it
 consistently in `db.ts` instead. Supply the value through your platform's secret
-store and never commit it. For local development, `vite dev` loads the project
+store and do not commit it. For local development, `vite dev` loads the project
 `.env`, and `flue run --env <file>` loads any `.env`-format file.
 
 Transaction-mode pooling is not the default. It can preserve an explicit
 transaction performed on one checked-out client and does not inherently break
 `BEGIN`/`COMMIT`, but it does not support prepared statements or session state.
 If your deployment requires transaction mode, keep `pg` queries unnamed as in
-the example: do not pass a `name` in query configuration or otherwise enable
+the example. Do not pass a `name` in query configuration or otherwise enable
 named prepared statements, and do not depend on session state.
 
 ## Use the transaction-safe runner
@@ -118,7 +118,7 @@ Every query in the callback uses the checked-out client. Sending those queries
 through the pool could move work onto another connection and outside the
 transaction. `@flue/postgres` uses transaction-scoped
 `pg_advisory_xact_lock`, not session advisory locks, to serialize session
-updates; each lock is released with its transaction.
+updates. Each lock is released with its transaction.
 
 ## Migrations
 

@@ -59,7 +59,7 @@ The blueprint installs `@flue/mysql` and `mysql2`, then writes a source-root
 `db.ts`. Flue discovers that file at build time and wires it into the generated
 Node server.
 
-`@flue/mysql` supports **MySQL 8 with InnoDB** on the **Node.js target**. The
+`@flue/mysql` supports MySQL 8 with InnoDB on the Node.js target. The
 Cloudflare target uses Durable Object SQLite automatically and rejects `db.ts`
 at build time. See [Database](/docs/guide/database/) for persistence by target.
 
@@ -108,7 +108,7 @@ export default mysql({
 ```
 
 The runner uses `?` placeholders and returns plain row objects. Every query in a
-transaction callback must use the checked-out connection; issuing those calls
+transaction callback must use the checked-out connection. Issuing those calls
 through the pool could move work onto another connection and outside the
 transaction.
 

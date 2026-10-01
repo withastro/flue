@@ -12,7 +12,7 @@ flue add [<kind> <name|url>] [--print]
 
 ## Description
 
-`flue add` fetches a blueprint — a Markdown implementation guide that an AI coding agent follows to build an integration into your project. It is not a package installer: the command prints the guide, and your coding agent applies it. Run with no arguments to list every available blueprint.
+`flue add` fetches a blueprint, which is a Markdown implementation guide that an AI coding agent follows to build an integration into your project. It is not a package installer. The command prints the guide, and your coding agent applies it. Run with no arguments to list every available blueprint.
 
 When invoked by a coding agent (detected from environment markers) or with `--print`, the guide's Markdown is written to stdout. From a plain shell without `--print`, instructions for piping it to a coding agent are printed instead. Blueprints are fetched at run time from the registry at `https://flueframework.com/cli/blueprints/`.
 

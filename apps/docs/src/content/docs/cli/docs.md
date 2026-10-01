@@ -1,6 +1,6 @@
 ---
 title: flue docs
-description: Browse the documentation bundled with the Flue CLI — list every page, print one as markdown, or search the full text.
+description: Browse the documentation bundled with the Flue CLI. List every page, print one as markdown, or search the full text.
 lastReviewedAt: 2026-07-21
 ---
 
@@ -14,7 +14,7 @@ flue docs search <query>
 
 ## Description
 
-`flue docs` browses the documentation that ships inside the `@flue/cli` package — the same pages published on this site. With no arguments it lists every page (`<path> -- <title>`, one per line). `read` prints one page as markdown. `search` runs a full-text query and prints JSON results.
+`flue docs` browses the documentation that ships inside the `@flue/cli` package. These are the same pages published on this site. With no arguments it lists every page (`<path> -- <title>`, one per line). `read` prints one page as markdown. `search` runs a full-text query and prints JSON results.
 
 The command reads from the local installation and makes no network requests, so the content always matches the installed CLI version rather than the live website.
 

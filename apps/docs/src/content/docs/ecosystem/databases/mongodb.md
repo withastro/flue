@@ -95,9 +95,9 @@ and `close()`.
 Each transaction uses one `ClientSession`, snapshot read concern, and majority
 write concern. Callback operations are session-bound and serialized because the
 driver does not support parallel operations inside one transaction. The runner
-uses separate bounded retry loops: it reruns the full callback for
-`TransientTransactionError`, while `UnknownTransactionCommitResult` retries
-only `commitTransaction()`. This avoids repeating application work when only the
+uses separate bounded retry loops, rerunning the full callback for
+`TransientTransactionError` but retrying only `commitTransaction()` for
+`UnknownTransactionCommitResult`. This avoids repeating application work when only the
 commit outcome is uncertain.
 
 Keep the complete generated runner when adapting connection options. In

@@ -33,7 +33,7 @@ How connections behave:
 
 - Flue connects when the agent starts working on a message and reuses the connection while the instance stays live. You don't open or close connections yourself.
 - If a server can't be reached, the run fails with an error and the next message retries. Set `optional: true` on the definition to run without that server's tools instead; the model is told they are unavailable.
-- The declaration may be conditional, like a tool mount: an agent can gain or lose a server based on its state, and the model is told about the change.
+- The declaration may be conditional, like a tool mount. An agent can then gain or lose a server based on its state, and the model is told about the change.
 
 See the [`useMcpConnection` reference](/docs/reference/agent-hooks-api/#usemcpconnection) for more details on behavior.
 
@@ -58,7 +58,7 @@ export function ProjectAssistant() {
 }
 ```
 
-Some MCP servers expect a dynamic per-user or per-session authorization token. When you need dynamic authorization, you may pass a function to `auth` instead of a string. The function is resolved on every request, so tokens can rotate and revoke and leave you with full control:
+Some MCP servers expect a dynamic per-user or per-session authorization token. When you need dynamic authorization, you may pass a function to `auth` instead of a string. The function is resolved on every request, so you control token rotation and revocation:
 
 ```ts
 export function Assistant() {
@@ -74,7 +74,7 @@ export function Assistant() {
 }
 ```
 
-Flue never stores or manages your tokens. It is your responsibility to own any OAuth flow, token storage, and refresh token logic.
+Flue never stores or manages your tokens. Your application owns any OAuth flow, token storage, and refresh token logic.
 
 To attach a server after the user authorizes it mid-conversation, declare the connection conditionally on a persistent flag:
 
@@ -94,7 +94,7 @@ useAgentStart(async () => {
 });
 ```
 
-When your OAuth flow completes and the flag flips, the agent has the server's tools from its next message on. If several agents need to share one user's authorization, put the integration in your application: an application-owned integration service can itself be an MCP server that agents connect to.
+When your OAuth flow completes and the flag flips, the agent has the server's tools from its next message on. If several agents need to share one user's authorization, put the integration in your application. An application-owned integration service can itself be an MCP server that agents connect to.
 
 ## Specifying tools
 
@@ -133,7 +133,7 @@ useMcpConnection({ ...linear, tools: ['search_issues'] }); // override fields pe
 
 ## Security
 
-An MCP server you connect to can influence your agent: its tool descriptions enter the prompt, and its tool results enter the conversation. Treat a server you don't control like any other third-party dependency, and consider using the `tools` allowlist to limit the surface area of your exposure.
+An MCP server you connect to can influence your agent, because its tool descriptions enter the prompt and its tool results enter the conversation. Treat a server you don't control like any other third-party dependency, and consider using the `tools` allowlist to limit your exposure.
 
 ## Advanced: Making a direct MCP server connection
 
@@ -149,12 +149,12 @@ export function ProjectAssistant() {
 }
 ```
 
-Each adapted definition preserves the server's MCP `annotations`, so trusted application code can inspect `tool.annotations?.readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` before mounting or wrapping it — for example, to require human approval for destructive calls (see [Approval gates](/docs/guide/tools/#approval-gates)). These are server-supplied hints, not a security boundary; only use them for approval decisions when you trust the server.
+Each adapted definition preserves the server's MCP `annotations`, so trusted application code can inspect `tool.annotations?.readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` before mounting or wrapping it. For example, you can require human approval for destructive calls (see [Approval gates](/docs/guide/tools/#approval-gates)). These are server-supplied hints, not a security boundary; only use them for approval decisions when you trust the server.
 
-This can also be helpful inside of a Node.js script, if you're ever using the Node.js JavaScript API directly — see [Standalone scripts](/docs/guide/building-agents/#standalone-scripts).
+This can also be helpful in a Node.js script, if you use the Node.js JavaScript API directly. See [Standalone scripts](/docs/guide/building-agents/#standalone-scripts).
 
 ## Next steps
 
 - [Tools](/docs/guide/tools/) — how tools work in Flue, including guards and conditional mounting.
 - [`useMcpConnection` reference](/docs/reference/agent-hooks-api/#usemcpconnection) — the hook's render contract and semantics.
-- [`McpConnectionDefinition`](/docs/reference/agent-api/#mcpconnectiondefinition) and [`createMcpConnection`](/docs/reference/agent-api/#createmcpconnection) — the definition fields and the adaptation contract.
+- [`McpConnectionDefinition`](/docs/reference/agent-api/#mcpconnectiondefinition) and [`createMcpConnection`](/docs/reference/agent-api/#createmcpconnection): the definition fields and the adaptation contract.

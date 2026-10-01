@@ -1,16 +1,16 @@
 ---
 title: Agent Hooks
-description: Compose an agent's capabilities — model, tools, skills, state, and lifecycle — with Flue's hook primitives.
+description: Compose an agent's capabilities (model, tools, skills, state, and lifecycle) with Flue's hooks.
 lastReviewedAt: 2026-07-23
 ---
 
-An agent function can return instructions, but instructions aren't much on their own. A real agent needs tools, skills, subagents, a sandbox, and persistent data to work with. All agent functionality and resources come from Flue's second core primitive — **agent hooks**.
+An agent function can return instructions, but instructions aren't much on their own. A useful agent needs tools, skills, subagents, a sandbox, and persistent data to work with. All agent functionality and resources come from **agent hooks**, Flue's second core building block.
 
 This guide covers what hooks are, the built-in hooks Flue ships with, and how to compose them into hooks of your own. (New to Flue? Be sure to read the [Agents guide](/docs/guide/building-agents/) first.)
 
 ## What is an agent hook?
 
-A hook is a plain function that you call inside your agent function's body to give your agent one new capability. You can spot hooks by their names — they all start with `use`. Each built-in hook lets your agent hook into a different feature of the Flue runtime:
+A hook is a plain function that you call inside your agent function's body to give your agent one new capability. You can spot hooks by their names. They all start with `use`. Each built-in hook lets your agent hook into a different feature of the Flue runtime:
 
 - [Model](/docs/guide/models/) (`useModel`) selects the LLM that powers the agent.
 - [Sandbox](/docs/guide/sandboxes/) (`useSandbox`) provides its filesystem and command-execution environment.
@@ -73,7 +73,7 @@ Every built-in hook is documented in the [Agent API](/docs/reference/agent-api/)
 
 ## Persisted state
 
-An agent conversation can live for days or months, and along the way the agent learns things worth keeping: which phase of a workflow it's in, what it has already checked, decisions it has made. `usePersistentState` gives that knowledge a durable home:
+An agent conversation can live for days or months, and along the way the agent learns things worth keeping, such as which phase of a workflow it's in, what it has already checked, and decisions it has made. `usePersistentState` gives that knowledge a durable home:
 
 ```ts title="src/agents/case-assistant.ts"
 'use agent';
@@ -103,11 +103,11 @@ export function CaseAssistant() {
 }
 ```
 
-The signature looks like React's `useState`, but the value is durable: every write is recorded in the conversation's storage, and every render reads the latest value back — across turns, across restarts, for the life of the conversation. Values must be JSON-serializable, and each piece of state is keyed by its name.
+The signature looks like React's `useState`, but the value is durable. Every write is recorded in the conversation's storage, and every render reads the latest value back. This holds across turns and restarts, for the life of the conversation. Values must be JSON-serializable, and each piece of state is keyed by its name.
 
-When the next value derives from the current one, pass an updater function (`(previous) => previous + 1`) rather than computing from the render value: the render value is a snapshot, while an updater always sees the latest write.
+When the next value derives from the current one, pass an updater function (`(previous) => previous + 1`) rather than computing from the render value. The render value is a snapshot, while an updater always sees the latest write.
 
-Everything else an agent knows lives loosely in the conversation transcript; persistent state is the part your code can read and act on. That's what makes multi-step behavior possible: interpolate state into your instructions, gate tools and skills on it (as `SupportAgent` above shows), or use it as a guard so one-time work happens exactly once — `CaseAssistant`'s gathering-then-drafting flow is nothing more than hooks reading a `phase` value. See [Durability](/docs/guide/durability/) for how state is stored and recovered.
+Everything else an agent knows lives loosely in the conversation transcript. Persistent state is the part your code can read and act on, and it makes multi-step behavior possible. You can interpolate state into your instructions, gate tools and skills on it (as `SupportAgent` above shows), or use it as a guard so one-time work happens once. `CaseAssistant`'s gathering-then-drafting flow is only hooks reading a `phase` value. See [Durability](/docs/guide/durability/) for how state is stored and recovered.
 
 ## Event hooks
 
@@ -140,7 +140,7 @@ export function AccountSupport({ id }: AgentProps) {
 }
 ```
 
-`useResponseStart` and `useResponseFinish` run exactly once at each response's true start and true end (irrespective of how many messages were received by the agent). Any data returned from the callback is merged onto the response's **metadata** — an envelope field that your client reads outside the message content — making them the place to stamp timings, token usage, or your own application markers:
+`useResponseStart` and `useResponseFinish` run exactly once at each response's true start and true end (irrespective of how many messages were received by the agent). Any data returned from the callback is merged onto the response's **metadata**, an envelope field that your client reads outside the message content. Use these hooks to stamp timings, token usage, or your own application markers:
 
 ```ts
 useResponseStart(() => ({ startedAt: Date.now() }));
@@ -150,7 +150,7 @@ useResponseFinish(({ metadata, response }) => ({
 }));
 ```
 
-Event hooks may be declared conditionally, just like resources. Their callbacks run at-least-once: completed work commits durably and is never repeated, while interrupted work is retried — so guard anything that must not happen twice (an outbound email, a page) with persistent state. The [Agent API](/docs/reference/agent-api/) documents each hook's full details.
+Event hooks may be declared conditionally, just like resources. Their callbacks run at-least-once. Completed work commits durably and is never repeated, while interrupted work is retried. Guard anything that must not happen twice (an outbound email, a page) with persistent state. The [Agent API](/docs/reference/agent-api/) documents each hook's full details.
 
 ## Passing data to the agent
 
@@ -196,7 +196,7 @@ The `initialData` schema static validates the data once, at instance creation. D
 
 ## Streaming data to the client
 
-An LLM replies with text, but a client often needs more structured data. This is especially common when a client is rendering some custom UI for the user: an order card, a progress meter, a chart, etc.
+An LLM replies with text, but a client often needs more structured data. This is especially common when a client is rendering custom UI for the user, such as an order card, a progress meter, or a chart.
 
 When you need to write structured data alongside the agent response, use the `useDataWriter()` hook. A data writer declares a named data channel and returns a write function that passes structured data to the client, keyed to the given name:
 
@@ -228,7 +228,7 @@ export function OrderAssistant() {
 }
 ```
 
-Each write is recorded durably and streamed to connected clients immediately — a tool can write several times mid-run to drive live progress, as `lookup_order` does above. On the wire, each write arrives as a named data part on the conversation message (`{ type: 'data-orderCard', data: … }`), separate from the text the model wrote. The optional `schema` validates every write.
+Each write is recorded durably and streamed to connected clients immediately. A tool can write several times mid-run to drive live progress, as `lookup_order` does above. On the wire, each write arrives as a named data part on the conversation message (`{ type: 'data-orderCard', data: … }`), separate from the text the model wrote. The optional `schema` validates every write.
 
 On the client, data parts arrive alongside text parts on the same message. With [`@flue/react`](/docs/guide/react/), rendering them is one extra branch in your message-parts loop:
 
@@ -252,11 +252,11 @@ export function OrderChat({ conversationId }: { conversationId: string }) {
 }
 ```
 
-The channel is strictly one-way, out of the agent: the model never sees data parts, and a write never re-runs the agent function. Declare data writers unconditionally, one unique name each — see the [Agent API](/docs/reference/agent-api/) for the full details.
+The channel is one-way, out of the agent. The model never sees data parts, and a write never re-runs the agent function. Declare data writers unconditionally, with one unique name each. See the [Agent API](/docs/reference/agent-api/) for details.
 
 ## Custom hooks
 
-Because hooks are plain function calls, you can extract related declarations into named, reusable pieces the same way React does: with **custom hooks**. A custom hook is a function that you define yourself, always prefixed with `use`. It may take arguments and return values to its caller, just like any other function:
+Because hooks are plain function calls, you can extract related declarations into named, reusable pieces the same way React does, with **custom hooks**. A custom hook is a function that you define yourself, always prefixed with `use`. It may take arguments and return values to its caller, just like any other function:
 
 ```ts title="src/agents/support-assistant.ts"
 import { useModel, useTool } from '@flue/runtime';
@@ -274,12 +274,12 @@ function SupportAssistant() {
 }
 ```
 
-Custom hooks are how larger agents stay readable, and how capabilities get shared across agents — a `useGitHub()` hook that bundles the right tools, skills, and instructions can be written once and dropped into every agent that works with GitHub.
+Custom hooks are how larger agents stay readable, and how capabilities get shared across agents. A `useGitHub()` hook that bundles the right tools, skills, and instructions can be written once and dropped into every agent that works with GitHub.
 
 ## Next steps
 
-- [Agent Guide](/docs/guide/building-agents/) — the definitive guide about building agents in Flue.
+- [Agent Guide](/docs/guide/building-agents/) — the main guide to building agents in Flue.
 - [Agent API](/docs/reference/agent-api/) — the full contract for every built-in hook.
-- [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what an agent can do and where it works.
+- [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/): configure what an agent can do and where it works.
 - [Subagents](/docs/guide/subagents/) — delegate focused work to a specialist agent function.
 - [Durability](/docs/guide/durability/) — how persistent state, retries, and recovery work.

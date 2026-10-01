@@ -67,7 +67,7 @@ import { channel as telegram } from './channels/telegram.ts';
 app.route('/channels/telegram', telegram.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/telegram` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/telegram` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -247,7 +247,7 @@ export function postMessage(ref: TelegramConversationRef) {
 
 ## Bind the tool
 
-`initialData` is the instance's creation data: recorded once when the event creates the
+`initialData` is the instance's creation data. It is recorded once when the event creates the
 instance and ignored afterward, so the channel passes it on every dispatch. Bind
 the tool from the agent with `useInitialData()` instead of parsing the instance
 id:
@@ -292,10 +292,10 @@ selects only message text.
 
 ## Verified inbound
 
-Flue owns one job on the inbound side: it verifies the
+On the inbound side, Flue verifies the
 `X-Telegram-Bot-Api-Secret-Token` header, enforces the body limit, parses the
 JSON, and forwards a single provider-native Bot API `Update` to your callback.
-There is no parallel normalized model — the update keeps Telegram's own field
+Flue does not normalize the update. It keeps Telegram's own field
 names, nesting, and discriminants. The authoritative type is the
 spec-generated [`@grammyjs/types`](https://github.com/grammyjs/types) `Update`,
 which `@flue/telegram` re-exports (the same type grammY uses).
@@ -303,14 +303,14 @@ which `@flue/telegram` re-exports (the same type grammY uses).
 Because at most one of an `Update`'s optional fields is present per delivery,
 branch on those fields instead of a discriminant. The example above reads
 `update.message ?? update.channel_post ?? update.business_message` for incoming
-messages and `update.callback_query` for callbacks; widen the branches to the
+messages and `update.callback_query` for callbacks. Widen the branches to the
 update families your bot enabled in `allowed_updates`. Each native `Message`
 carries its own conversation identity, which `conversationFromMessage` reads to
 build the `TelegramConversationRef`.
 
 Each delivery contains one Update and invokes the callback once.
 `update.update_id` is Telegram's ordering and duplicate-detection key. The
-package does not persist it; claim it in application storage before dispatch
+package does not persist it. Claim it in application storage before dispatch
 when duplicate admission is unacceptable.
 
 Telegram retries unsuccessful webhook requests. Returning nothing produces an
@@ -320,7 +320,7 @@ the Hono context for explicit status control.
 ## Conversation identity
 
 `conversationFromMessage` derives a canonical instance id from the native
-`Message`: regular chats, business chats, forum threads, and channel
+`Message`. Regular chats, business chats, forum threads, and channel
 direct-message topics produce distinct ids. Business identity includes
 `businessConnectionId` because Telegram warns that business chat ids can match
 ordinary bot chat ids, and a thread id (`message_thread_id`) and direct-message

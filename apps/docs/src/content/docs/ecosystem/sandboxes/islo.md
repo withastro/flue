@@ -79,9 +79,9 @@ Pass a sandbox name to `islo(...)` and assign the returned factory to an agent's
 
 ## Configure
 
-| Variable       | Purpose                                                                                                                |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `ISLO_API_KEY` | **Alternative authentication** — Authenticates server or CI operation when existing CLI authentication is unavailable. |
+| Variable       | Purpose                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `ISLO_API_KEY` | **Alternative authentication.** Authenticates server or CI operation when existing CLI authentication is unavailable. |
 
 | Requirement                            | Purpose                                                                   |
 | -------------------------------------- | ------------------------------------------------------------------------- |

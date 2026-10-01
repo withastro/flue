@@ -9,7 +9,7 @@ lastReviewedAt: 2026-07-21
 
 `@flue/opentelemetry` projects Flue's live runtime observations into standard OpenTelemetry GenAI spans and metrics. It does not configure an SDK, exporter, sampling, credentials, or deployment-specific flushing.
 
-The package implements the Development GenAI conventions pinned at commit `4c8addb53718b544134be47e256237026fe88875`. Its Flue-to-GenAI projection revision is `5` and its Flue extension revision is `5`; the vocabulary, projection, and revision constants live in `@flue/runtime/telemetry` and are shared verbatim with the [native Cloudflare tracing adapter](/docs/guide/cloudflare-target/#createcloudflaretracing), so a payload written for one backend reads identically on the other. Updating any revision requires an explicit compatibility review.
+The package implements the Development GenAI conventions pinned at commit `4c8addb53718b544134be47e256237026fe88875`. Its Flue-to-GenAI projection revision is `5` and its Flue extension revision is `5`. The vocabulary, projection, and revision constants live in `@flue/runtime/telemetry` and are shared verbatim with the [native Cloudflare tracing adapter](/docs/guide/cloudflare-target/#createcloudflaretracing), so a payload written for one backend reads identically on the other. Updating any revision requires an explicit compatibility review.
 
 ## Configure
 
@@ -40,13 +40,13 @@ Pass configured tracer, meter, or structural Logger instances when the applicati
 - A caller shell execution becomes `flue.operation shell`.
 - A context compaction becomes `flue.compaction` with child chat spans.
 
-Provider chat spans cover provider inference only. The projection reads canonical model telemetry directly: semantic `request.providerName` becomes `gen_ai.provider.name`, while `request.providerId` remains the Flue registration identity. Local tools are sibling spans under the agent invocation and correlate with model output through `gen_ai.tool.call.id`.
+Provider chat spans cover provider inference only. The projection reads canonical model telemetry directly. Semantic `request.providerName` becomes `gen_ai.provider.name`, while `request.providerId` remains the Flue registration identity. Local tools are sibling spans under the agent invocation and correlate with model output through `gen_ai.tool.call.id`.
 
 `gen_ai.conversation.id` identifies one persisted Flue session. It is not a submission, dispatch, operation, trace, session name, or provider-affinity key. Flue correlation fields remain under documented `flue.*` attributes when no exact standard field exists.
 
 ## Protect content
 
-**Content is enabled by default** — model messages, reasoning, system instructions, tool definitions, arguments/results, and exception messages and stack traces all ship as span attributes. The explicit `instrument(...)` call is the consent (a deliberate deviation from the wider OTel GenAI convention of content off behind an env-var opt-in). Review the receiving backend's retention and access controls, and apply one of the two controls below before exporting to a backend not cleared for conversation data.
+**Content is enabled by default.** Model messages, reasoning, system instructions, tool definitions, arguments/results, and exception messages and stack traces all ship as span attributes. The explicit `instrument(...)` call is the consent. This differs from the wider OTel GenAI convention, which keeps content off behind an env-var opt-in. Review the receiving backend's retention and access controls, and apply one of the two controls below before exporting to a backend not cleared for conversation data.
 
 ```ts
 // content-free spans
@@ -63,15 +63,15 @@ const instrumentation = createOpenTelemetryInstrumentation({
 });
 ```
 
-A detached converted value passes through `transform` once per content type; returning `undefined` omits that content, and a throwing transform emits a `[flue]` failure sentinel instead of the unredacted value. `scope` carries the content type, event type, execution identity, and `traceId`/`spanId`. For byte budgets, slice inside the transform or use the exported `truncateContent(content, { maxBytes })`. After the transform, a 56 KiB per-span content budget is enforced **in-band** (default, sized to workerd's 64 KiB span-attribute cap): everything content-bearing a span carries — messages, system instructions, tool definitions and payloads, exception message/stack — shares one pool, with a reserve held so response content has room beside large prompts. Backends that aren't bound by workerd's limits can raise (or tighten) the pool with `contentBudgetBytes` on `createOpenTelemetryInstrumentation()` — e.g. `contentBudgetBytes: 200_000` ships fuller prompts and tool results to a non-workerd observability backend. (On the Cloudflare target, `createCloudflareTracing()`'s `contentBudgetBytes` is a tightening control only: workerd's 64 KiB span-attribute cap is a platform limit no setting raises.) Payloads stay valid JSON where they are structurally serialized objects/arrays (oldest messages drop first behind a `role: "flue"` sentinel message, and oversized string leaves are cut with a `[flue:truncated, …]` suffix) — an oversized raw string is cut as a string and no longer parses as JSON. There are no side-channel truncation marker attributes; search payloads for `[flue]` instead.
+A detached converted value passes through `transform` once per content type; returning `undefined` omits that content, and a throwing transform emits a `[flue]` failure sentinel instead of the unredacted value. `scope` carries the content type, event type, execution identity, and `traceId`/`spanId`. For byte budgets, slice inside the transform or use the exported `truncateContent(content, { maxBytes })`. After the transform, a 56 KiB per-span content budget is enforced in-band (the default, sized to workerd's 64 KiB span-attribute cap). All content a span carries (messages, system instructions, tool definitions and payloads, exception message/stack) shares one pool, with a reserve held so response content has room beside large prompts. Backends that aren't bound by workerd's limits can raise (or tighten) the pool with `contentBudgetBytes` on `createOpenTelemetryInstrumentation()`. For example, `contentBudgetBytes: 200_000` ships fuller prompts and tool results to a non-workerd observability backend. (On the Cloudflare target, `createCloudflareTracing()`'s `contentBudgetBytes` is a tightening control only, because workerd's 64 KiB span-attribute cap is a platform limit no setting raises.) Payloads stay valid JSON where they are structurally serialized objects/arrays (oldest messages drop first behind a `role: "flue"` sentinel message, and oversized string leaves are cut with a `[flue:truncated, …]` suffix). An oversized raw string is cut as a string and no longer parses as JSON. There are no side-channel truncation marker attributes; search payloads for `[flue]` instead.
 
-Tool arguments/results use the standard `gen_ai.tool.call.*` attributes for every payload shape, so standards-aware backends can display them: object and array payloads record as JSON strings, string payloads that fit the remaining content budget record byte-for-byte, and other scalars record as their JSON form. The pinned conventions type these attributes `any` and sanction JSON-string form on spans.
+Tool arguments/results use the standard `gen_ai.tool.call.*` attributes for every payload shape, so standards-aware backends can display them. Object and array payloads record as JSON strings, string payloads that fit the remaining content budget record byte-for-byte, and other scalars record as their JSON form. The pinned conventions type these attributes `any` and sanction JSON-string form on spans.
 
 ## Metrics and Logs
 
 The instrumentation emits client-operation, token-usage, agent-invocation, and tool-duration histograms. Metric dimensions exclude execution IDs; review your application-controlled agent, tool, provider, and model names for appropriate cardinality. Input token totals include cache-read and cache-creation input tokens.
 
-Logs require explicit Logger injection. Failed inference operations emit the standard `gen_ai.client.operation.exception` event at WARN/13. Error type is always recorded; exception messages and throw-site stack traces (`exception.stacktrace`) ride the content gate — included by default, transformed by your `transform`, absent under `content: false`. Logger absence does not affect traces or metrics.
+Logs require explicit Logger injection. Failed inference operations emit the standard `gen_ai.client.operation.exception` event at WARN/13. Error type is always recorded; exception messages and throw-site stack traces (`exception.stacktrace`) follow the content policy. They are included by default, transformed by your `transform`, and absent under `content: false`. Logger absence does not affect traces or metrics.
 
 ## Propagation and recovery
 
@@ -85,8 +85,8 @@ Pi does not expose authoritative raw provider stream-item timing. Flue therefore
 
 ## Unsupported operations
 
-Flue does not emit invented spans for agent creation, planning, embeddings, retrieval, memory operations, remote agent clients, or evaluations. These operations remain absent until Flue exposes a genuine corresponding boundary.
+Flue does not emit invented spans for agent creation, planning, embeddings, retrieval, memory operations, remote agent clients, or evaluations. These operations remain absent until Flue exposes a corresponding boundary.
 
 ## Verify
 
-Use an in-memory OpenTelemetry exporter in tests to verify hierarchy, names, kinds, status, attributes, metrics, and your content policy (including that `content: false` or your transform actually removes what you expect). Hosted backend rendering is backend-specific; standards-correct OTel output is the portable contract.
+Use an in-memory OpenTelemetry exporter in tests to verify hierarchy, names, kinds, status, attributes, metrics, and your content policy (including that `content: false` or your transform removes what you expect). Hosted backend rendering is backend-specific; standards-correct OTel output is what stays portable.

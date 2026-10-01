@@ -4,15 +4,15 @@ description: Build and deploy Flue agents as a Node.js server with Vite.
 lastReviewedAt: 2026-07-21
 ---
 
-Build and deploy Flue agents as a Node.js server. This guide walks you through creating your first agent, running it locally, and deploying it anywhere you can run Node.js — a VPS, Docker, Railway, Fly.io, or any cloud platform.
+Build and deploy Flue agents as a Node.js server. This guide walks you through creating your first agent, running it locally, and deploying it anywhere you can run Node.js, such as a VPS, Docker, Railway, Fly.io, or any cloud platform.
 
 By the end, you will have a Flue agent running as a Node.js server, and you will know how to add subagents, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
 
-Flue is a Vite plugin: `vite dev` serves the application locally and `vite build` produces the deployable server artifact. First review [Routing](/docs/guide/routing/) for how `app.ts` mounts agent routes and how server code can `dispatch(...)` into agents. To package the server as a container image, see [Deploy Agents with Docker](/docs/ecosystem/deploy/docker/).
+Flue is a Vite plugin. `vite dev` serves the application locally and `vite build` produces the deployable server artifact. First review [Routing](/docs/guide/routing/) for how `app.ts` mounts agent routes and how server code can `dispatch(...)` into agents. To package the server as a container image, see [Deploy Agents with Docker](/docs/ecosystem/deploy/docker/).
 
 ## Hello World
 
-The simplest agent — no container, no storage, just a prompt and a reply.
+The simplest agent has no container and no storage. It takes a prompt and returns a reply.
 
 ### 1. Set up your project
 
@@ -47,7 +47,7 @@ And the scripts:
 
 ### 2. Create your first agent
 
-An agent module is an ordinary TypeScript file plus one line: the `'use agent'` directive. The directive is how an agent joins the application — the build scans your source root for marked modules, every exported function with a capitalized name is an agent, and the function's name becomes the agent's durable identity (an optional `Translator.agentName = '...'` string-literal static overrides it).
+An agent module is an ordinary TypeScript file with one added line, the `'use agent'` directive. The directive is how an agent joins the application. The build scans your source root for marked modules, and every exported function with a capitalized name is an agent. The function's name becomes the agent's durable identity (an optional `Translator.agentName = '...'` string-literal static overrides it).
 
 ```typescript title="src/agents/translator.ts"
 'use agent';
@@ -59,11 +59,11 @@ export function Translator() {
 }
 ```
 
-Agents that need a filesystem can attach an in-memory [virtual sandbox](/docs/guide/sandboxes/#the-virtual-sandbox) powered by [just-bash](https://github.com/vercel-labs/just-bash) — no container needed.
+Agents that need a filesystem can attach an in-memory [virtual sandbox](/docs/guide/sandboxes/#the-virtual-sandbox) powered by [just-bash](https://github.com/vercel-labs/just-bash), with no container.
 
 ### 3. Create app.ts — the route map
 
-`app.ts` is the only required file. Its default export owns the request pipeline, and every route is mounted explicitly — `app.ts` IS the routing table:
+`app.ts` is the only required file. Its default export owns the request pipeline, and every route is mounted explicitly. `app.ts` is the routing table:
 
 ```typescript title="src/app.ts"
 import { createAgentRouter } from '@flue/runtime/routing';
@@ -78,7 +78,7 @@ app.get('/api/ping', (c) => c.text('pong'));
 export default app;
 ```
 
-`createAgentRouter(Translator)` is a pure router factory: the mount path is yours to choose, and per-agent middleware is plain Hono at the mount (`app.use('/agents/translator/*', <middleware>)` before the `app.route(...)` line) to authenticate requests before they reach the agent. See [Routing](/docs/guide/routing/).
+`createAgentRouter(Translator)` is a pure router factory. You choose the mount path, and per-agent middleware is plain Hono at the mount (`app.use('/agents/translator/*', <middleware>)` before the `app.route(...)` line) to authenticate requests before they reach the agent. See [Routing](/docs/guide/routing/).
 
 ### 4. Add your API key
 
@@ -92,7 +92,7 @@ EOF
 printf '\n.env\n' >> .gitignore
 ```
 
-Use the env var name your provider expects — `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic, and so on. Do not commit `.env`.
+Use the env var name your provider expects, such as `OPENAI_API_KEY` for OpenAI or `ANTHROPIC_API_KEY` for Anthropic. Do not commit `.env`.
 
 ### 5. Run it
 
@@ -113,9 +113,9 @@ curl -X POST 'http://localhost:5173/agents/translator/demo-1' \
 curl 'http://localhost:5173/agents/translator/demo-1'
 ```
 
-Application code should use the [Flue Agent SDK](/docs/sdk/overview/) instead of raw curl — `createFlueClient({ url }).send(...)` plus `wait()`/`observe()` handles admission and streaming for you.
+Application code should use the [Flue Agent SDK](/docs/sdk/overview/) instead of raw curl. `createFlueClient({ url }).send(...)` plus `wait()`/`observe()` handles admission and streaming for you.
 
-For a one-shot local check without any server, `flue run` executes the agent module directly — transport-free, no port:
+For a one-shot local check without any server, `flue run` executes the agent module directly, with no transport and no port:
 
 ```bash
 npx flue run src/agents/translator.ts --message "Translate to French: Hello world"
@@ -129,13 +129,13 @@ set -a; source .env; set +a
 node dist/server.mjs
 ```
 
-`vite build` compiles your project into `./dist/server.mjs` without packaging `.env` credentials into the server; the built server reads only the environment supplied when you start it. It uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via `PORT`). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
+`vite build` compiles your project into `./dist/server.mjs` without packaging `.env` credentials into the server; the built server reads only the environment supplied when you start it. It uses [Hono](https://hono.dev/) and listens on port 3000 by default (configurable via `PORT`). Your project's `node_modules` are still needed at runtime, because the build externalizes your dependencies instead of bundling them.
 
-To verify the artifact before deploying, `vite preview` serves the built application (it imports `dist/app.mjs` directly, with production behavior), or run it for real with `node dist/server.mjs`.
+To verify the artifact before deploying, `vite preview` serves the built application (it imports `dist/app.mjs` directly, with production behavior), or run it with `node dist/server.mjs`.
 
 ## Deterministic tool calls
 
-For structured, schema-validated work inside the conversation, give the agent a harness-connected tool with `useTool({ harness: true })`: `run` receives the agent's runtime (sandbox and model access) and can call back into the model for sub-tasks.
+For structured, schema-validated work inside the conversation, give the agent a harness-connected tool with `useTool({ harness: true })`. Its `run` receives the agent's runtime (sandbox and model access) and can call back into the model for sub-tasks.
 
 ```typescript title="src/agents/reporter.ts"
 'use agent';
@@ -186,9 +186,9 @@ export function Reporter() {
 
 ## Sandbox context
 
-The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `local()`, that's your real project root, so any files there are visible. With the virtual sandbox the filesystem starts empty — you'd set up context via `harness.sandbox`. Agents without a sandbox skip workspace discovery entirely.
+The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `local()`, that's your real project root, so any files there are visible. With the virtual sandbox the filesystem starts empty, so you set up context via `harness.sandbox`. Agents without a sandbox skip workspace discovery.
 
-**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
+Skills are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
 `.agents/skills/summarize/SKILL.md`:
 
@@ -202,9 +202,9 @@ Given the text provided in the arguments, produce a concise summary.
 Focus on the key points and keep it to 2-3 sentences.
 ```
 
-**`AGENTS.md`** at the root of the sandbox is the agent's system prompt — it provides global context about the project.
+`AGENTS.md` at the root of the sandbox is the agent's system prompt. It provides global context about the project.
 
-Direct a skill from an Action or tool body with `harness.prompt(...)` — it shares the agent's own conversation context, so naming the skill is enough for the model to activate it:
+Direct a skill from an Action or tool body with `harness.prompt(...)`. It shares the agent's own conversation context, so naming the skill is enough for the model to activate it:
 
 ```typescript
 import * as v from 'valibot';
@@ -216,11 +216,11 @@ const { data } = await harness.prompt(`Apply the summarize skill to this text:\n
 
 ## Using the local sandbox
 
-`local()` is where Node really shines compared to other targets. The agent runs directly against the host filesystem and shell — `cwd` is `process.cwd()`, shell commands go through `child_process`, and `AGENTS.md` and skills are discovered from the project root.
+`local()` is the main advantage of Node over other targets. The agent runs directly against the host filesystem and shell. Its `cwd` is `process.cwd()`, shell commands go through `child_process`, and `AGENTS.md` and skills are discovered from the project root.
 
-Run flue itself inside an isolation boundary you trust — a CI runner, a container, a sandbox VM. There is no second layer of isolation between the agent and the host.
+Run flue itself inside an isolation boundary you trust, such as a CI runner, a container, or a sandbox VM. There is no second layer of isolation between the agent and the host.
 
-Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale, etc.) are inherited from `process.env`; anything else — API keys, tokens, deploy credentials — has to be passed explicitly via `local({ env: { ... } })`. That keeps the model's `bash` tool from seeing host secrets by accident.
+Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale, etc.) are inherited from `process.env`. Anything else (API keys, tokens, deploy credentials) has to be passed explicitly via `local({ env: { ... } })`. That keeps the model's `bash` tool from seeing host secrets by accident.
 
 ```typescript title="src/agents/reviewer.ts"
 'use agent';
@@ -234,20 +234,20 @@ export function Reviewer() {
 }
 ```
 
-The agent reads, searches, and modifies files via its built-in tools — read, write, edit, grep, glob, bash. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool. Env vars are opt-in via `local({ env: { ... } })` — pass `process.env.GH_TOKEN`, `process.env.NPM_TOKEN`, etc. into the sandbox for the binaries that need them.
+The agent reads, searches, and modifies files with its built-in read, write, edit, grep, glob, and bash tools. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool. Env vars are opt-in via `local({ env: { ... } })`. Pass `process.env.GH_TOKEN`, `process.env.NPM_TOKEN`, etc. into the sandbox for the binaries that need them.
 
 ### When to use it
 
 - **Self-hosted coding agents** — review PRs, fix bugs, refactor against the actual repo.
 - **File processing** — read documents, transform data, generate reports from local files.
 - **Dev tooling** — analyze project structure, run linters, generate boilerplate.
-- **CI** — issue triage, deploy checks, anything where the runner already provides isolation. `flue run` is a natural fit here: one agent, one message, no port.
+- **CI** — issue triage, deploy checks, and other jobs where the runner already provides isolation. `flue run` is a natural fit here, with one agent, one message, and no port.
 
-No container startup, real project context, fast iteration. If you need a tighter boundary on a specific operation — agent can call it, never sees the underlying secret — wrap it as a custom tool via `useTool(...)` in the agent function. The tool reads `process.env`; the agent only sees the tool's params and result.
+The local sandbox has no container startup, uses the actual project context, and iterates fast. If you need a tighter boundary on a specific operation, where the agent can call it but never sees the underlying secret, wrap it as a custom tool via `useTool(...)` in the agent function. The tool reads `process.env`; the agent only sees the tool's params and result.
 
 ## Connecting a remote sandbox
 
-The examples above use either the virtual sandbox or the local sandbox. When you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a remote sandbox.
+The examples above use either the virtual sandbox or the local sandbox. When you need full isolation per session, with each user in their own Linux environment with git, Node.js, Python, etc., use a remote sandbox.
 
 Flue connects to remote sandboxes through project-owned sandbox adapters installed from `flue add` blueprints. Run `flue add` with no arguments to see what's currently supported, or `flue add sandbox <url>` to have your coding agent build an adapter for an unsupported provider against the [Sandbox Adapter API](/docs/reference/sandbox-api/).
 
@@ -255,7 +255,7 @@ The Ecosystem catalog lists available provider integrations, including [Daytona]
 
 ### When to use a remote sandbox
 
-The **local and virtual sandboxes** start in milliseconds; the local sandbox shares the host filesystem, and neither gives per-session isolation — a fit for single-tenant use and CI. A **remote sandbox** takes seconds to start (cached images are faster) and gives each session its own fully isolated environment, which multi-tenant and SaaS deployments need.
+The local and virtual sandboxes start in milliseconds. The local sandbox shares the host filesystem, and neither gives per-session isolation, so they fit single-tenant use and CI. A remote sandbox takes seconds to start (cached images are faster) and gives each session its own isolated environment, which multi-tenant and SaaS deployments need.
 
 Start with the local or virtual sandbox. Move to a remote sandbox when you need per-session isolation.
 
@@ -280,23 +280,23 @@ node dist/server.mjs
 PORT=8080 node dist/server.mjs
 ```
 
-The built server never runs in local dev mode: developer-only error guidance and the dev SQLite file are wired only through `vite dev`, not through environment variables.
+The built server never runs in local dev mode. Developer-only error guidance and the dev SQLite file are wired only through `vite dev`, not through environment variables.
 
-The deployed server exposes exactly the routes `app.ts` mounts. For each mounted agent, relative to its mount:
+The deployed server exposes only the routes `app.ts` mounts. For each mounted agent, relative to its mount:
 
-- `POST /:id` — deliver a message into a conversation (`202` admission);
-- `GET /:id` — read the conversation (materialized history or live updates via the Durable Streams protocol);
+- `POST /:id` — deliver a message into a conversation (`202` admission).
+- `GET /:id` — read the conversation (materialized history or live updates via the Durable Streams protocol).
 - `POST /:id/abort` — abort in-flight and queued work.
 
 Flue does not add a health endpoint or inspection routes by default. Define a host-required health route in `app.ts` and compose any operator endpoints behind your own authorization. See [Routing](/docs/guide/routing/).
 
 ### Choosing a sandbox strategy
 
-Here's the progression of sandbox types available on Node.js, from simplest to most powerful:
+Sandbox types available on Node.js, from simplest to most capable:
 
-1. **Empty virtual sandbox** — an agent function with just `useModel(...)`. Fast, cheap, stateless. Good for prompt-and-response agents.
-2. **Virtual sandbox with shell setup** — Use `harness.sandbox` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **Local sandbox** — `useSandbox(local())` in the agent function. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
-4. **Remote sandbox** — Full isolated Linux environment via a sandbox adapter. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
+1. **Empty virtual sandbox** — an agent function with only `useModel(...)`. Fast, cheap, stateless. Good for prompt-and-response agents.
+2. **Virtual sandbox with shell setup** — use `harness.sandbox` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
+3. **Local sandbox** — `useSandbox(local())` in the agent function. Direct host filesystem and shell access. Good for self-hosted agents, CI tasks, and dev tooling, wherever the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
+4. **Remote sandbox** — an isolated Linux environment via a sandbox adapter. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

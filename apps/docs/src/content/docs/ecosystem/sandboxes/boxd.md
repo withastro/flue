@@ -61,7 +61,7 @@ export function boxd(box: BoxdBox, options?: BoxdAdapterOptions): SandboxFactory
 }
 ```
 
-Passing `boxd(box)` as an agent's `sandbox` waits for that VM's exec endpoint once, then exposes its files and Linux shell through Flue. Relative paths resolve from `/home/boxd` unless you set `cwd`; command timeouts remain in milliseconds, `stat` validates GNU metadata output, and `rm` receives the requested recursive and force flags, while VM identity, credentials, networking, persistence, and cleanup remain application-owned.
+Passing `boxd(box)` as an agent's `sandbox` waits for that VM's exec endpoint once, then exposes its files and Linux shell through Flue. Relative paths resolve from `/home/boxd` unless you set `cwd`. Command timeouts remain in milliseconds, `stat` validates GNU metadata output, and `rm` receives the requested recursive and force flags. VM identity, credentials, networking, persistence, and cleanup remain application-owned.
 
 ## Configure
 

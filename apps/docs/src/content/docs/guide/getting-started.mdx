@@ -6,12 +6,12 @@ lastReviewedAt: 2026-07-21
 
 import CopyPrompt from '../../../components/docs/CopyPrompt.astro';
 
-**Flue** is the open agent framework, from the creators of [Astro](https://astro.build/). Use a React-like hooks API to build agents in TypeScript using your favorite LLMs. Run them locally or deploy them anywhere: Node.js, Cloudflare, GitHub Actions, GitHub CI/CD, etc.
+**Flue** is the open agent framework, from the creators of [Astro](https://astro.build/). Use a React-like hooks API to build agents in TypeScript using your favorite LLMs. Run them locally, or deploy them anywhere, including Node.js, Cloudflare, GitHub Actions, and GitLab CI/CD.
 
 ## Prerequisites
 
 - **Node.js** — `>=22.19.0` minimum required version.
-- **LLM** — API key(s) to connect to your favorite model provider. Flue is built on Pi, and supports [all Pi providers](https://pi.dev/docs/latest/providers) out of the box. Flue's [Cloudflare runtime](/docs/guide/cloudflare-target/) provides a built-in `cloudflare/*` AI gateway, no API keys required.
+- **LLM** — API key(s) to connect to your favorite model provider. Flue is built on Pi and supports [all Pi providers](https://pi.dev/docs/latest/providers). Flue's [Cloudflare runtime](/docs/guide/cloudflare-target/) provides a built-in `cloudflare/*` AI gateway that needs no API keys.
 
 ## Automatic Installation
 
@@ -49,7 +49,7 @@ And finally, create your first `src/agents/assistant.ts`:
 import { useModel } from '@flue/runtime';
 
 // This is your first agent: `Assistant`.
-// It's return value is your agent's instructions, which become the agent's "system" instructions.
+// Its return value is your agent's instructions, which become the agent's "system" instructions.
 // Flue Hooks like `useModel()` allow you to customize and modify your agent abilities.
 export function Assistant() {
 	useModel('anthropic/claude-haiku-4-5');
@@ -57,9 +57,9 @@ export function Assistant() {
 }
 ```
 
-Congratulations, you just built your first agent! From here you can shape its behavior and add capabilities — or keep going and put it behind a real server.
+Congratulations, you just built your first agent! From here you can shape its behavior and add capabilities, or keep going and put it behind a server.
 
-You can use any [Model/Provider](/docs/guide/models/) that Pi supports. In the example above, we use Claude Haiku. Whichever you choose, just be sure to provide the required API keys to the agent runtime. Its recommended to use a `.env` file to manage your API keys:
+You can use any [Model/Provider](/docs/guide/models/) that Pi supports. In the example above, we use Claude Haiku. Whichever you choose, provide the required API keys to the agent runtime. It's recommended to use a `.env` file to manage your API keys:
 
 ```
 # .env
@@ -74,7 +74,7 @@ You can now spin up new agents from your terminal, running on your local machine
 npx flue run src/agents/assistant.ts --message "Say hello in five words or fewer."
 ```
 
-Agents are addressable, so you can message with a specific agent by passing an agent ID (`--id`). Agent conversations are persistent — the second message remembers the first. See [`flue run`](/docs/cli/run/) for the full set of flags.
+Agents are addressable, so you can message with a specific agent by passing an agent ID (`--id`). Agent conversations are persistent, so the second message remembers the first. See [`flue run`](/docs/cli/run/) for the full set of flags.
 
 ```bash
 npx flue run src/agents/assistant.ts --id hello-1 --message "What's a good name for a pet crab?"
@@ -106,7 +106,7 @@ export default defineConfig({
 });
 ```
 
-If you are deploying to Cloudflare, then you should also install `@cloudflare/vite-plugin` and add `cloudflare()` after `flue()` in the Vite plugins array. see the [Cloudflare runtime](/docs/guide/cloudflare-target/) guide for more.
+If you are deploying to Cloudflare, then you should also install `@cloudflare/vite-plugin` and add `cloudflare()` after `flue()` in the Vite plugins array. See the [Cloudflare runtime](/docs/guide/cloudflare-target/) guide for more.
 
 ### 3. Build your app router
 
@@ -125,17 +125,17 @@ app.route('/agents/assistant', createAgentRouter(Assistant));
 export default app;
 ```
 
-The `createAgentRouter()` helper will define and mount your agent routes: `POST /:id`, `GET /:id`, `POST /:id/abort`, etc. See [Routing](/docs/guide/routing/) for a full walkthrough of how routing works in Flue.
+The `createAgentRouter()` helper will define and mount your agent routes, such as `POST /:id`, `GET /:id`, and `POST /:id/abort`. See [Routing](/docs/guide/routing/) for a full walkthrough of how routing works in Flue.
 
 ### 4. Start the dev server
 
-As mentioned, Flue leverages Vite to power its dev and build pipeline. To spin up your dev server, run `vite dev`:
+As mentioned, Flue uses Vite to power its dev and build pipeline. To spin up your dev server, run `vite dev`:
 
 ```bash
 npx vite dev
 ```
 
-Vite spins up your `app.ts` (by default at `http://localhost:5173`) application and servers your agents at the routes that you defined. Test your setup by sending your agent a message — one `POST` per message, `202` on admission:
+Vite spins up your `app.ts` (by default at `http://localhost:5173`) application and serves your agents at the routes that you defined. Test your setup by sending your agent a message. Each message is one `POST`, and the server returns `202` on admission:
 
 ```bash
 curl -X POST http://localhost:5173/agents/assistant/hello-1 \
@@ -143,7 +143,7 @@ curl -X POST http://localhost:5173/agents/assistant/hello-1 \
   -d '{"kind":"user","body":"Tell me a joke."}'
 ```
 
-The `hello-1` in the URL is the agent ID, the same `--id` you passed to `flue run` above. Read the conversation back with `curl "http://localhost:5173/agents/assistant/hello-1?view=history"`, or use the [Flue Agent SDK](/docs/sdk/overview/) and [React hooks](/docs/guide/react/) when you're ready to build real product experiences.
+The `hello-1` in the URL is the agent ID, the same `--id` you passed to `flue run` above. Read the conversation back with `curl "http://localhost:5173/agents/assistant/hello-1?view=history"`, or use the [Flue Agent SDK](/docs/sdk/overview/) and [React hooks](/docs/guide/react/) when you're ready to build product experiences.
 
 `vite build` will produce a runnable `dist/server.mjs` build output for the `"node"` runtime target, or a deployable Cloudflare Worker when configured with the `"cloudflare"` runtime target.
 
@@ -152,7 +152,7 @@ Congratulations, you've completed our quickstart guide! You have created your fi
 ## Next steps
 
 - [Agents](/docs/guide/building-agents/) — configure the model, add capabilities, and understand how conversations persist over time.
-- [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — give your agent real capabilities and a workspace to work in.
+- [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/): give your agent capabilities and a workspace to work in.
 - [Routing](/docs/guide/routing/) — mount additional agents and application routes in `app.ts`.
-- [Deploy to Cloudflare](/docs/ecosystem/deploy/cloudflare/) or [Node.js](/docs/ecosystem/deploy/node/) — host your agent for real traffic.
-- [Agent SDK](/docs/sdk/overview/) and [React](/docs/guide/react/) — build product experiences on top of a deployed agent.
+- [Deploy to Cloudflare](/docs/ecosystem/deploy/cloudflare/) or [Node.js](/docs/ecosystem/deploy/node/): host your agent for production traffic.
+- [Agent SDK](/docs/sdk/overview/) and [React](/docs/guide/react/): build product experiences on top of a deployed agent.

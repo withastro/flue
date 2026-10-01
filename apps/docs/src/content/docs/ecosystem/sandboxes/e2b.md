@@ -16,7 +16,7 @@ flue add sandbox e2b
 
 ## Overview
 
-The blueprint installs `e2b` when needed and creates `sandboxes/e2b.ts` in your source-root. That file adapts an E2B sandbox that your application has already created; it does not create, retain, or close provider resources.
+The blueprint installs `e2b` when needed and creates `sandboxes/e2b.ts` in your source-root. That file adapts an E2B sandbox that your application has already created. It does not create, retain, or close provider resources.
 
 ```ts title="<source-root>/sandboxes/e2b.ts (abridged)"
 // flue-blueprint: sandbox/e2b@1
@@ -59,7 +59,7 @@ Pass an initialized E2B `Sandbox` to `e2b(...)`, then pass the returned factory 
 | Provider-managed Linux sandbox | **Required** — Supplies the command and filesystem environment.             |
 | Application-owned lifecycle    | **Required** — Creates the sandbox and closes or retains it as appropriate. |
 
-## Integration shape
+## Integration example
 
 ```ts
 import { Sandbox } from 'e2b';
@@ -80,6 +80,6 @@ export function Assistant() {
 }
 ```
 
-Select templates, timeouts, network access, secret exposure, and resource reuse through your application and provider policy. Flue adapts the active environment; it does not choose provider retention for you.
+Select templates, timeouts, network access, secret exposure, and resource reuse through your application and provider policy. Flue adapts the active environment. It does not choose provider retention for you.
 
 See [Sandboxes](/docs/guide/sandboxes/) and [Sandbox Adapter API](/docs/reference/sandbox-api/).

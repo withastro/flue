@@ -4,15 +4,15 @@ description: Deploy Flue agents to AWS with SST as a long-running Fargate contai
 lastReviewedAt: 2026-07-21
 ---
 
-[SST](https://sst.dev) is a TypeScript infrastructure-as-code framework for AWS. You describe your infrastructure as components in a single `sst.config.ts` file and deploy it with `sst deploy`. This guide deploys a Flue agent as a persistent container service, not as a Lambda function: Flue's streaming responses use long-lived conversation `GET` connections, and its default coordinator keeps state in memory, so it must run as an always-on process. SST's `sst.aws.Service` component runs exactly that — a container on AWS Fargate behind a load balancer.
+[SST](https://sst.dev) is a TypeScript infrastructure-as-code framework for AWS. You describe your infrastructure as components in a single `sst.config.ts` file and deploy it with `sst deploy`. This guide deploys a Flue agent as a persistent container service, not as a Lambda function. Flue's streaming responses use long-lived conversation `GET` connections, and its default coordinator keeps state in memory, so it must run as an always-on process. SST's `sst.aws.Service` component runs a container of that kind on AWS Fargate behind a load balancer.
 
-This guide builds on the [Docker](/docs/ecosystem/deploy/docker/) guide. SST builds and pushes the image from that same `Dockerfile`; the steps below cover the SST-specific wiring — the service, secrets, and database. The `vite build` output (`dist/server.mjs`, started with `node dist/server.mjs`) and its runtime contract are unchanged from the [Node.js](/docs/ecosystem/deploy/node/) guide.
+This guide builds on the [Docker](/docs/ecosystem/deploy/docker/) guide. SST builds and pushes the image from that same `Dockerfile`. The steps below cover the SST-specific wiring for the service, secrets, and database. The `vite build` output (`dist/server.mjs`, started with `node dist/server.mjs`) and its runtime requirements are unchanged from the [Node.js](/docs/ecosystem/deploy/node/) guide.
 
-This guide was written against SST v3 (the Ion engine, the current major line). SST's component API moves quickly; confirm field names against the current [SST docs](https://sst.dev/docs/) for your installed version.
+This guide was written against SST v3 (the Ion engine, the current major line). SST's component API changes quickly. Confirm field names against the current [SST docs](https://sst.dev/docs/) for your installed version.
 
 ## The service
 
-An `sst.aws.Service` runs on an `sst.aws.Cluster`, which needs an `sst.aws.Vpc`. The service builds the container from your `Dockerfile` and exposes it through a load balancer. Point the load balancer's `forward` port at the port your Dockerfile's server listens on — the [Docker](/docs/ecosystem/deploy/docker/) guide binds `PORT=8080`, so the examples below forward to `8080`.
+An `sst.aws.Service` runs on an `sst.aws.Cluster`, which needs an `sst.aws.Vpc`. The service builds the container from your `Dockerfile` and exposes it through a load balancer. Point the load balancer's `forward` port at the port your Dockerfile's server listens on. The [Docker](/docs/ecosystem/deploy/docker/) guide binds `PORT=8080`, so the examples below forward to `8080`.
 
 ```typescript title="sst.config.ts"
 /// <reference path="./.sst/platform/config.d.ts" />
@@ -44,7 +44,7 @@ export default $config({
 
 ## Environment and secrets
 
-Flue's built server reads its provider key and model from the environment at start time. SST's `link` exposes resources through the `sst` SDK's `Resource` object at runtime, but the Flue server does not import that SDK — it reads plain `process.env`. So pass values the server needs through the service's `environment` field, not through `link` alone.
+Flue's built server reads its provider key and model from the environment at start time. SST's `link` exposes resources through the `sst` SDK's `Resource` object at runtime, but the Flue server does not import that SDK. It reads plain `process.env`. So pass values the server needs through the service's `environment` field, not through `link` alone.
 
 Define the provider key as an `sst.Secret` so its value stays out of source, then interpolate it into `environment`:
 
@@ -69,11 +69,11 @@ Use `OPENAI_API_KEY` (and an `openai/...` `MODEL_SPECIFIER`) instead for OpenAI,
 sst secret set AnthropicApiKey sk-...
 ```
 
-Linking the secret grants the service permission to read it; the `environment` entry is what surfaces it to the Flue process as `process.env.ANTHROPIC_API_KEY`.
+Linking the secret grants the service permission to read it. The `environment` entry exposes it to the Flue process as `process.env.ANTHROPIC_API_KEY`.
 
 ## Persistence
 
-On a single Fargate task, Flue's canonical conversations, attachments, and accepted submissions live in memory, so they are lost when the task restarts or redeploys. Back them with Postgres when state must survive replacement or be available to replacement tasks. Shared storage does not enable active-active agent execution: route each agent instance to one live task.
+On a single Fargate task, Flue's canonical conversations, attachments, and accepted submissions live in memory, so they are lost when the task restarts or redeploys. Back them with Postgres when state must survive replacement or be available to replacement tasks. Shared storage does not enable active-active agent execution. Route each agent instance to one live task.
 
 The `sst.aws.Postgres` component provisions an RDS Postgres instance in the VPC and exposes its connection parts as outputs (`host`, `port`, `username`, `password`, `database`). Construct a `DATABASE_URL` from those with `$interpolate` and pass it through `environment`:
 
@@ -93,7 +93,7 @@ new sst.aws.Service('Flue', {
 });
 ```
 
-Install `@flue/postgres` and add a `db.ts` that wraps your configured `pg` pool and reads `DATABASE_URL` — see [Postgres](/docs/ecosystem/databases/postgres/) for the full bring-your-own-driver runner:
+Install `@flue/postgres` and add a `db.ts` that wraps your configured `pg` pool and reads `DATABASE_URL`. See [Postgres](/docs/ecosystem/databases/postgres/) for the full bring-your-own-driver runner:
 
 ```typescript title="src/db.ts (abridged)"
 import { postgres } from '@flue/postgres';
@@ -114,7 +114,7 @@ Flue discovers `db.ts` at build time and wires it into the generated server. The
 
 ## Health and streaming
 
-The load balancer health-checks the service before it routes traffic, and the check defaults to path `/`. Flue does not generate a `/health` route — define one in `app.ts`, or the load balancer will treat the default health-check path as unhealthy if `/` doesn't return a `200`. Once that route exists, point the check at it through the service's `loadBalancer.health` field, which is keyed by the forwarded `'port/protocol'`:
+The load balancer health-checks the service before it routes traffic, and the check defaults to path `/`. Flue does not generate a `/health` route. Define one in `app.ts`, or the load balancer will treat the default health-check path as unhealthy if `/` doesn't return a `200`. Once that route exists, point the check at it through the service's `loadBalancer.health` field, which is keyed by the forwarded `'port/protocol'`:
 
 ```typescript title="sst.config.ts"
 loadBalancer: {
@@ -127,11 +127,11 @@ loadBalancer: {
 
 `sst.aws.Service` also accepts a container-level `health` command (run by ECS, e.g. `{ command: ['CMD-SHELL', 'curl -f http://localhost:8080/health || exit 1'] }`) if you prefer an ECS health check.
 
-Agent conversations hold long-lived `GET` reads open on the conversation URL (long-poll or SSE). Load balancer idle timeouts can cut these off; for slow work, retain the admission's `streamUrl` and `offset`, raise the idle timeout, and resume the conversation stream rather than holding one blocking request. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
+Agent conversations hold long-lived `GET` reads open on the conversation URL (long-poll or SSE). Load balancer idle timeouts can cut these off. For slow work, retain the admission's `streamUrl` and `offset`, raise the idle timeout, and resume the conversation stream rather than holding one blocking request. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
 
 ## Going further
 
-SST stages give you independent environments from one config — `sst deploy --stage production` and `sst deploy --stage dev` provision separate copies, and `sst secret set` scopes values per stage. Run `sst deploy` from CI or locally; `sst remove --stage <name>` tears a stage down. See the [SST docs](https://sst.dev/docs/) for autodeploy, custom domains on the load balancer, and scaling the service. Multiple tasks require shared durable storage plus instance-affine routing so one live task owns each agent instance.
+SST stages give you independent environments from one config. `sst deploy --stage production` and `sst deploy --stage dev` provision separate copies, and `sst secret set` scopes values per stage. Run `sst deploy` from CI or locally. `sst remove --stage <name>` tears a stage down. See the [SST docs](https://sst.dev/docs/) for autodeploy, custom domains on the load balancer, and scaling the service. Multiple tasks require shared durable storage plus instance-affine routing so one live task owns each agent instance.
 
 ## References
 

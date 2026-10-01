@@ -66,7 +66,7 @@ export const channel = createStripeChannel({
 
 A matching event is admitted to the billing agent identified by its Stripe
 customer. Other events receive an empty successful response. The generated
-module also defines a customer-bound retrieval tool; the blueprint wires that
+module also defines a customer-bound retrieval tool, and the blueprint wires that
 tool into the billing agent. For Cloudflare targets, the same SDK uses its Fetch
 and Web Crypto implementation.
 
@@ -80,7 +80,7 @@ import { channel as stripe } from './channels/stripe.ts';
 app.route('/channels/stripe', stripe.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/stripe` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/stripe` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -228,8 +228,8 @@ export const channel = createStripeChannel({
 The callback receives Stripe's native
 `Stripe.V2.Core.EventNotification`. Its `fetchEvent()` and
 `fetchRelatedObject()` methods use the project-owned client and preserve Stripe
-context. Snapshot and thin destinations use different signed payload shapes;
-the package rejects a payload that does not match the configured mode.
+context. Snapshot and thin destinations use different signed payload formats.
+The package rejects a payload that does not match the configured mode.
 
 ## Delivery behavior
 
@@ -255,7 +255,7 @@ Cloudflare Workers. The example executes that path in workerd with Flue's
 required `nodejs_compat` configuration. Projects may initialize credentials
 through `process.env` or typed Worker bindings and should still verify their
 complete target build and workerd tests. Stripe's declarations reference
-`@types/node`; that package is type-only and does not add Node code to the
+`@types/node`. That package is type-only and does not add Node code to the
 Worker bundle.
 
 The channel does not register event destinations, rotate signing secrets,

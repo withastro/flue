@@ -16,7 +16,7 @@ flue add sandbox modal
 
 ## Overview
 
-The Modal blueprint installs the `modal` JavaScript SDK when needed and creates `sandboxes/modal.ts` in your source-root. The generated adapter accepts an application-created Modal `Sandbox`; provisioning, image selection, credentials, and shutdown remain outside the adapter.
+The Modal blueprint installs the `modal` JavaScript SDK when needed and creates `sandboxes/modal.ts` in your source-root. The generated adapter accepts an application-created Modal `Sandbox`. Provisioning, image selection, credentials, and shutdown remain outside the adapter.
 
 ```ts title="<source-root>/sandboxes/modal.ts (abridged)"
 // flue-blueprint: sandbox/modal@1
@@ -53,7 +53,7 @@ export function modal(sandbox: ModalSandbox, options?: ModalAdapterOptions): San
 }
 ```
 
-Passing `modal(sandbox)` as an agent's `sandbox` exposes the created Modal Sandbox's files and command execution through Flue, with relative paths rooted at `/` unless you set `cwd`. The selected image must provide `bash` and compatible filesystem utilities for operations that Modal's SDK does not expose directly; the generated `stat` parser supports the output used by GNU and BusyBox `stat`, and `rm` receives the requested recursive and force flags.
+Passing `modal(sandbox)` as an agent's `sandbox` exposes the created Modal Sandbox's files and command execution through Flue, with relative paths rooted at `/` unless you set `cwd`. The selected image must provide `bash` and compatible filesystem utilities for operations that Modal's SDK does not expose directly. The generated `stat` parser supports the output used by GNU and BusyBox `stat`, and `rm` receives the requested recursive and force flags.
 
 ## Configure
 

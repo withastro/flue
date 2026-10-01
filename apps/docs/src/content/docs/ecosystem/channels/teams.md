@@ -65,7 +65,7 @@ import { channel as teams } from './channels/teams.ts';
 app.route('/channels/teams', teams.route());
 ```
 
-`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/teams` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+`channel.route()` is a pure router factory that serves the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/teams` mount. A different mount path shifts them accordingly. The `'use agent'` directive registers the dispatch-target agent module, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -75,7 +75,7 @@ app.route('/channels/teams', teams.route());
 | `TEAMS_TENANT_ID`    | **Required** — Constrains activity tenant identity.   |
 | `TEAMS_APP_PASSWORD` | **Required** — Authenticates outbound OAuth requests. |
 
-It installs `@flue/teams` for authenticated Bot Connector ingress and creates a
+The blueprint installs `@flue/teams` for authenticated Bot Connector ingress and creates a
 project-owned Fetch client for outbound messages.
 
 Microsoft's current JavaScript Agents and Teams SDKs declare Node runtimes and
@@ -174,9 +174,9 @@ types) and read Microsoft's documented field names. Call
 you need to address a reply. Return nothing for an empty `200`, return JSON for
 a provider body, or use the Hono context for explicit status control.
 
-Azure Bot Service holds the inbound request open with a real response window, so
-admit durable work quickly — `dispatch(...)` the activity and return, then rely
-on idempotency rather than blocking the response on long-running work. `invoke`
+Azure Bot Service holds the inbound request open only for a limited response
+window, so admit durable work quickly. `dispatch(...)` the activity and return,
+then rely on idempotency instead of blocking the response on long-running work. `invoke`
 activities expect a JSON acknowledgement body, and the Bot Connector retries on
 any non-2xx response, so return a 2xx once the work is safely admitted.
 
@@ -208,7 +208,7 @@ Assistant.initialData = initialData;
 
 The model selects only message text. Trusted code binds the Connector service
 URL, conversation, bot account, and channel thread as the instance's creation
-data — the agent reads them with `useInitialData()` instead of parsing the
+data. The agent reads them with `useInitialData()` instead of parsing the
 instance id.
 
 ## Authentication
