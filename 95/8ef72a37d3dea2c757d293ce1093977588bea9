@@ -1,0 +1,21 @@
+packages/runtime/src/runtime/providers.ts
+  s_a708593f2f9bfe::t_9a8384f0a90347 32
+packages/runtime/test/runtime-model-providers.test.ts
+  s_a708593f2f9bfe::t_938f108ea3e53e 189,194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "958ef72a37d3dea2c757d293ce1093977588bea9",
+  "prompts": {},
+  "sessions": {
+    "s_a708593f2f9bfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f23b4042-3abd-4c95-a55a-d427a168539e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
