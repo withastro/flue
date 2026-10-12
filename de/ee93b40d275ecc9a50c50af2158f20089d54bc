@@ -1,0 +1,103 @@
+CHANGELOG.md
+  s_ebafd7565b031e::t_3d8dab98ad6d8c 3-7,11-16
+apps/docs/src/content/docs/ecosystem/sandboxes/e2b.md
+  s_ebafd7565b031e::t_ca20987811858d 22,34-35
+apps/docs/src/content/docs/reference/provider-api.md
+  s_ebafd7565b031e::t_02971364aa8d89 157
+apps/www/package.json
+  s_ebafd7565b031e::t_7f65ad8b815167 16
+blueprints/sandbox--e2b.md
+  s_ebafd7565b031e::t_0f8114dd65950d 4,46,79,92-94,173-182,301-329
+examples/chat-sdk/package.json
+  s_ebafd7565b031e::t_feb5f9afe766bb 13
+examples/hello-world/package.json
+  s_ebafd7565b031e::t_167adeaa6782a6 7
+examples/react-chat/package.json
+  s_ebafd7565b031e::t_19d49e1ba8de30 12
+packages/cli/package.json
+  s_ebafd7565b031e::t_307d189e9d5ffd 3
+packages/cli/src/lib/init.ts
+  s_ebafd7565b031e::t_7f4cfdc32785d1 169-170,249-252
+packages/discord/package.json
+  s_ebafd7565b031e::t_10fa70d0dee1e8 3
+packages/github/package.json
+  s_ebafd7565b031e::t_b491222d379c30 3
+packages/google-chat/package.json
+  s_ebafd7565b031e::t_b01012be49d5ec 3
+packages/intercom/package.json
+  s_ebafd7565b031e::t_60df5e587ca7fb 3
+packages/libsql/package.json
+  s_ebafd7565b031e::t_8271e364eb389c 3
+packages/linear/package.json
+  s_ebafd7565b031e::t_225cb5fc84fe55 3
+packages/messenger/package.json
+  s_ebafd7565b031e::t_d50a461051acac 3
+packages/mongodb/package.json
+  s_ebafd7565b031e::t_977bd1502547d7 3
+packages/mysql/package.json
+  s_ebafd7565b031e::t_8edc8f2b294d05 3
+packages/notion/package.json
+  s_ebafd7565b031e::t_e6c99d47225f1d 3
+packages/opentelemetry/package.json
+  s_ebafd7565b031e::t_f0f909448874e3 3
+packages/postgres/package.json
+  s_ebafd7565b031e::t_9f9ae9dc94f5f5 3
+packages/react/package.json
+  s_ebafd7565b031e::t_fdc2de27bf5745 3
+packages/redis/package.json
+  s_ebafd7565b031e::t_cd0eca13347cc0 3
+packages/resend/package.json
+  s_ebafd7565b031e::t_3ed0ebaf531f3c 3
+packages/runtime/package.json
+  s_ebafd7565b031e::t_7bec06a9c89357 3,87-88
+packages/runtime/src/agent.ts
+  s_ebafd7565b031e::t_4590fcd6057b35 87-91,94
+packages/runtime/src/client.ts
+  s_ebafd7565b031e::t_a60d974829667f 492-495
+packages/runtime/src/node/local-env.ts
+  s_ebafd7565b031e::t_4eb7b5433da621 97,103-104
+packages/runtime/src/runtime/providers.ts
+  s_ebafd7565b031e::t_095eae9474bc32 32,54,94
+packages/runtime/src/session.ts
+  s_ebafd7565b031e::t_42f47aceec89a6 2201,2603-2606
+packages/salesforce-marketing-cloud/package.json
+  s_ebafd7565b031e::t_db7afe56b5faa3 3
+packages/sdk/package.json
+  s_ebafd7565b031e::t_562b6e88485492 3
+packages/shopify/package.json
+  s_ebafd7565b031e::t_3a613ecaacacca 3
+packages/slack/package.json
+  s_ebafd7565b031e::t_5e954c60a9dd02 3
+packages/stripe/package.json
+  s_ebafd7565b031e::t_4a20c355db9efd 3
+packages/teams/package.json
+  s_ebafd7565b031e::t_fbbeaf085f9216 3
+packages/telegram/package.json
+  s_ebafd7565b031e::t_0374ec16b216e5 3
+packages/twilio/package.json
+  s_ebafd7565b031e::t_0a121240bb1a41 3
+packages/vite/package.json
+  s_ebafd7565b031e::t_92b05848dda7bc 3,50
+packages/whatsapp/package.json
+  s_ebafd7565b031e::t_8cf92865b5d4c6 3
+packages/zendesk/package.json
+  s_ebafd7565b031e::t_9bc2a5b24516ad 3
+pnpm-lock.yaml
+  s_ebafd7565b031e::t_acd43532f78f82 80-81,87,100,103,155,167,182,198,210,235,246-247,275,300,312,337,349,352,374,386,389,411,423,426,434-435,457,479,504,507,522,525,547,559,562,581,593,596,618,640,643,658,661,666-667,713,732,735,753,756,772,775,790,793,824,843,846,861,864,886,898,901,920,935,938,960,979,991,994,1016,1028,1031,1050,1062,1065,1093,1096,1099,1121,1133,1136,1158,1161,1176,1179,1209,1228,1241,1253,1266,1278,1291,1303,1313,1325,1344,1357,1369,1379,1391,1413,1432,1442,1460,1490,1509,1539,1561,1574,1592,1597-1598,1600-1601,1641,1651,1663,1682,1695,1707,1720,1732,1742,1760,1776,1788,1801,1813,1823,1838,1850,1863,1865-1866,1878,1881,1894,1906,1919,1931,1938-1939,2575,2587,2593,2599,2644-2645,2648-2649,2653-2654,8055-8057,8059-8063,8066-8073,9457,9745,9747,9888,9890,9892,9924,9926,10298,10303,10311,10318,10429,10431,10434,10436-10437,10441,10446,10448,10450,10455,10459,10461-10462,10466,10471,12636,12643,13275,13278,13280,13299,13305,13436,13443,13457,15938,15940-15942,17341,17346,17350,17353,17370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "deee93b40d275ecc9a50c50af2158f20089d54bc",
+  "prompts": {},
+  "sessions": {
+    "s_ebafd7565b031e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0e0fa660-c2a3-4ef5-b0d0-8f3a0a924d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
