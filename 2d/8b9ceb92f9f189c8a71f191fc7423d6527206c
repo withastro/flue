@@ -1,0 +1,23 @@
+packages/cli/test/run.test.mjs
+  s_16b21ea42b4ae7::t_94685393dd2607 57-61,86,92
+packages/opentelemetry/test/index.test.ts
+  s_16b21ea42b4ae7::t_d2fec278130245 432-433,1188-1192,1484-1487,1725
+packages/react/test/agent-reducer.test.ts
+  s_16b21ea42b4ae7::t_704c3ba956133d 296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2d8b9ceb92f9f189c8a71f191fc7423d6527206c",
+  "prompts": {},
+  "sessions": {
+    "s_16b21ea42b4ae7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b92af13-29ae-4903-8fd9-1cac9b2250f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
