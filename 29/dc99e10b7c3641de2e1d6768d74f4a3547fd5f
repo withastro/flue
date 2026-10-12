@@ -1,0 +1,19 @@
+scripts/publish-public.mjs
+  s_16b21ea42b4ae7::t_d9077701d55e41 37,40,95,118,223-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "29dc99e10b7c3641de2e1d6768d74f4a3547fd5f",
+  "prompts": {},
+  "sessions": {
+    "s_16b21ea42b4ae7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b92af13-29ae-4903-8fd9-1cac9b2250f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
