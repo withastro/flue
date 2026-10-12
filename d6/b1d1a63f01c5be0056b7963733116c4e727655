@@ -1,0 +1,57 @@
+packages/runtime/test/agent-function.test.ts
+  s_16b21ea42b4ae7::t_0dd22e0f5edf21 1-6,56
+packages/runtime/test/agent-harness-tool.test.ts
+  s_16b21ea42b4ae7::t_c9a057fcd2c109 10,506
+packages/runtime/test/agent-props.test.ts
+  s_16b21ea42b4ae7::t_6da11964740f8b 1-6,29
+packages/runtime/test/agent-resources.test.ts
+  s_16b21ea42b4ae7::t_46c0b0c44eaca3 9-10,237,244,314,320,336,510,576-584,609,618,628-634,651-652,656-657,661,663,679,685,694,697,706-707
+packages/runtime/test/agent-sandbox.test.ts
+  s_16b21ea42b4ae7::t_91014a666a49e2 9-10,330-332,356,670,676,798,858
+packages/runtime/test/agent-skill.test.ts
+  s_16b21ea42b4ae7::t_8e7a24053a620b 9-10,186-187
+packages/runtime/test/agent-state.test.ts
+  s_16b21ea42b4ae7::t_812c81b151c9ff 9,448
+packages/runtime/test/agent-subagent.test.ts
+  s_16b21ea42b4ae7::t_1a3e5033931720 9-10,257,269-270
+packages/runtime/test/cloudflare-context.test.ts
+  s_16b21ea42b4ae7::t_e9b57e2a9c5aff 154,169,400-404
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_16b21ea42b4ae7::t_604e05ec3ce290 1116-1119,1166-1169
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_16b21ea42b4ae7::t_0281d2857e8558 1-7,130,144,167,206-211,238-240,257-259,282-287,320,353,400,429,458,485-487,520,552,576,612,649,675,702,759,788,823-825,855,883,908,934,985,999,1051-1053,1091,1115-1117,1151-1153,1181-1183,1205-1207,1234-1236,1261-1263,1314-1315,1335-1338,1350-1355
+packages/runtime/test/conversation-reducer.test.ts
+  s_16b21ea42b4ae7::t_38af259523d346 1233,1241,1258,1315
+packages/runtime/test/mcp.test.ts
+  s_16b21ea42b4ae7::t_a745518aa79933 1-6,308
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_16b21ea42b4ae7::t_dadfdbe04507a7 552-560,1084,1219-1259,1262-1277,1279-1288,1290-1300,1592,3199-3204
+packages/runtime/test/session-operations.test.ts
+  s_16b21ea42b4ae7::t_9adb444fd6f9a0 8-9,175,305,417-425,720,824,828,877,909,958,974,1041,1151-1154,1182,1185,1251-1256,1336-1337,1375,1726-1728
+packages/runtime/test/session-skills.test.ts
+  s_16b21ea42b4ae7::t_8ea5f7c656c359 6,212,244-246
+packages/runtime/test/structured-results.test.ts
+  s_16b21ea42b4ae7::t_bf4920de2d8deb 7,382
+packages/runtime/test/telemetry-content.test.ts
+  s_16b21ea42b4ae7::t_9ebc0a54fead28 238-243,268,271-273,277-278
+packages/runtime/test/tool.test.ts
+  s_16b21ea42b4ae7::t_7ec02d120fd1ad 6,343-345,730-733,905,910-912,916-918,947-949
+packages/runtime/test/use-mcp-connection.test.ts
+  s_16b21ea42b4ae7::t_379584e2e51bbf 4-9,196,259,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d6b1d1a63f01c5be0056b7963733116c4e727655",
+  "prompts": {},
+  "sessions": {
+    "s_16b21ea42b4ae7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b92af13-29ae-4903-8fd9-1cac9b2250f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
