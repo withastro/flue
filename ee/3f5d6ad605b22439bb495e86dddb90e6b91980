@@ -1,0 +1,101 @@
+.gitignore
+  s_16b21ea42b4ae7::t_5b0dd7d25f52a7 4
+CHANGELOG.md
+  s_16b21ea42b4ae7::t_af54eab28bc365 3-109
+examples/discord-channel/package.json
+  s_16b21ea42b4ae7::t_c713bee51fcb1e 7-10
+examples/github-channel/package.json
+  s_16b21ea42b4ae7::t_bed8695d56b31f 7-8
+examples/google-chat-channel/package.json
+  s_16b21ea42b4ae7::t_2504502d0d3397 7-10
+examples/intercom-channel/package.json
+  s_16b21ea42b4ae7::t_15b821dacf99ec 8-9
+examples/linear-channel/package.json
+  s_16b21ea42b4ae7::t_454c8fd81c01b9 7-8
+examples/messenger-channel/package.json
+  s_16b21ea42b4ae7::t_27636b9d7fb99a 7-10
+examples/notion-channel/package.json
+  s_16b21ea42b4ae7::t_c66a579edbac24 8-9
+examples/resend-channel/package.json
+  s_16b21ea42b4ae7::t_ebd65701632cdb 8-9
+examples/salesforce-marketing-cloud-channel/package.json
+  s_16b21ea42b4ae7::t_e1ea4f1ae03fc3 8-9
+examples/shopify-channel/package.json
+  s_16b21ea42b4ae7::t_37d55fd65415f2 8-9
+examples/slack-channel/package.json
+  s_16b21ea42b4ae7::t_b5ef1c734500dc 7-8
+examples/stripe-channel/package.json
+  s_16b21ea42b4ae7::t_d21bf7ce4badab 7-10
+examples/teams-channel/package.json
+  s_16b21ea42b4ae7::t_68282ef187c5b7 7-8
+examples/telegram-channel/package.json
+  s_16b21ea42b4ae7::t_363bb47184a9d7 7-8
+examples/twilio-channel/package.json
+  s_16b21ea42b4ae7::t_f2b5e8487d3726 7-10
+examples/whatsapp-channel/package.json
+  s_16b21ea42b4ae7::t_588c1d0bdde3ce 7-10
+examples/zendesk-channel/package.json
+  s_16b21ea42b4ae7::t_3a23f6691883ce 8-9
+packages/cli/package.json
+  s_16b21ea42b4ae7::t_d5049ac9b04eca 26-28
+packages/discord/package.json
+  s_16b21ea42b4ae7::t_fb01726633a957 28-30
+packages/github/package.json
+  s_16b21ea42b4ae7::t_9bb5766769f052 28-30
+packages/google-chat/package.json
+  s_16b21ea42b4ae7::t_8c7bf38e1cb62c 28-30
+packages/intercom/package.json
+  s_16b21ea42b4ae7::t_6e65575c0f1295 28-30
+packages/libsql/package.json
+  s_16b21ea42b4ae7::t_cff0760c68f0d7 28-29
+packages/linear/package.json
+  s_16b21ea42b4ae7::t_fe4d5e3ec74a3f 28-30
+packages/messenger/package.json
+  s_16b21ea42b4ae7::t_2f481d7056c464 28-30
+packages/mongodb/package.json
+  s_16b21ea42b4ae7::t_17effd37000479 29
+packages/mysql/package.json
+  s_16b21ea42b4ae7::t_2de0372122b867 28-29
+packages/notion/package.json
+  s_16b21ea42b4ae7::t_03e3cdd27297f1 28-30
+packages/postgres/package.json
+  s_16b21ea42b4ae7::t_ef5e2752e1e72a 28-29
+packages/redis/package.json
+  s_16b21ea42b4ae7::t_d4afe22babaf6e 28-29
+packages/resend/package.json
+  s_16b21ea42b4ae7::t_db0a7be56dd6b8 28-30
+packages/salesforce-marketing-cloud/package.json
+  s_16b21ea42b4ae7::t_2921960aba8ab2 28-30
+packages/shopify/package.json
+  s_16b21ea42b4ae7::t_6c9d6206b73dff 28-30
+packages/slack/package.json
+  s_16b21ea42b4ae7::t_a0444ee03fccaa 28-30
+packages/stripe/package.json
+  s_16b21ea42b4ae7::t_5506151033dcc9 28-30
+packages/teams/package.json
+  s_16b21ea42b4ae7::t_cb109443d47da1 28-30
+packages/telegram/package.json
+  s_16b21ea42b4ae7::t_60cf568880e417 28-30
+packages/twilio/package.json
+  s_16b21ea42b4ae7::t_acd9ce1e9f7845 28-30
+packages/whatsapp/package.json
+  s_16b21ea42b4ae7::t_0803b443cb6d36 28-30
+packages/zendesk/package.json
+  s_16b21ea42b4ae7::t_56df50f583aefc 28-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ee3f5d6ad605b22439bb495e86dddb90e6b91980",
+  "prompts": {},
+  "sessions": {
+    "s_16b21ea42b4ae7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b92af13-29ae-4903-8fd9-1cac9b2250f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
