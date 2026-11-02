@@ -23,6 +23,15 @@ export interface FlueTraceCarrier {
 export interface FlueExecutionContext {
 	eventContext?: import('./types.ts').FlueEventContext;
 	instanceId?: string;
+	/**
+	 * The conversation id of the root conversation this work descends from:
+	 * a root session's own id, inherited unchanged by every delegated task
+	 * (at any depth) and harness-tool child conversation it spawns, and
+	 * stable across every submission, attempt, and recovery of that root.
+	 * `conversationId` stays the id of the conversation doing the work, so the
+	 * two differ inside a task. Opaque; absent outside a session.
+	 */
+	rootConversationId?: string;
 	submissionId?: string;
 	agentName?: string;
 	conversationId?: string;

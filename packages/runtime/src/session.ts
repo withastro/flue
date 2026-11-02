@@ -370,6 +370,8 @@ function toTurnContent(block: ProviderContentBlock): TurnContent {
 export interface CreateTaskSessionOptions {
 	parentSession: string;
 	parentConversationId: string;
+	/** The parent's root conversation id, inherited by the task unchanged. */
+	rootConversationId?: string;
 	taskId: string;
 	/** The parent's live environment, or `undefined` when it has no sandbox. */
 	parentEnv: Sandbox | undefined;
@@ -3103,6 +3105,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			child = await this.createTaskSession({
 				parentSession: this.name,
 				parentConversationId: this.conversationId,
+				...(this.executionIdentity.rootConversationId === undefined
+					? {}
+					: { rootConversationId: this.executionIdentity.rootConversationId }),
 				taskId: ref.taskId,
 				parentEnv: this.attachedEnv,
 				cwd: args.cwd,
@@ -4476,6 +4481,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			child = await this.createTaskSession({
 				parentSession: this.name,
 				parentConversationId: this.conversationId,
+				...(this.executionIdentity.rootConversationId === undefined
+					? {}
+					: { rootConversationId: this.executionIdentity.rootConversationId }),
 				taskId,
 				parentEnv: this.attachedEnv,
 				cwd: options?.cwd,

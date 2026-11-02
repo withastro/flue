@@ -373,6 +373,8 @@ Each agent response's trace carries agent-level spans nested under the invocatio
 
 Span names and attributes follow the OpenTelemetry GenAI conventions that Cloudflare's own agent tracing emits, so Flue agents read natively in the Traces dashboard; Flue-specific keys live under `flue.*`.
 
+Every `invoke_agent`, `chat`, and `execute_tool` span also carries [`session.id`](https://opentelemetry.io/docs/specs/semconv/general/session/), the Agent Session the work belongs to: the agent's root conversation and everything it delegates. The value is the root conversation's id, the same on every response and trace of that conversation. `session.id` comes from OpenTelemetry's general session convention, not the GenAI conventions; grouping a parent with its delegates under one Session is Flue's mapping, not an OpenTelemetry requirement. [`gen_ai.conversation.id`](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/registry/attributes/gen-ai.md) keeps its GenAI meaning, the conversation doing the work: on the root's own spans it equals `session.id`, while a subagent task (at any depth), which runs in a fresh conversation of its own, reports that conversation's id and inherits the root's `session.id`. One Session therefore groups a parent and all of its delegates without reconstructing the span tree.
+
 **Content is on by default** — the opt-in on this target is enabling Workers Traces on the account, in `wrangler.jsonc` or from the dashboard. Pass `content: false` for content-free spans, or a `transform` to apply policy in code:
 
 ```ts title="src/app.ts"

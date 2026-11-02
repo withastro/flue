@@ -30,6 +30,16 @@
  * beyond in-process repair: spans still open at that boundary cannot be
  * stored, and trace consumers must tolerate the orphaned children.
  *
+ * Every interception-opened span (`invoke_agent`, `chat`, `execute_tool`,
+ * caller shell) carries `session.id` (the general OpenTelemetry session
+ * convention; see `ATTR.sessionId`): the product-level Agent Session, which
+ * in Flue is a root conversation and everything it delegates. Its value is
+ * the execution context's root conversation id, so the root's operations and
+ * every task (at any depth), model turn, and tool beneath it share one value
+ * across submissions and traces, while `gen_ai.conversation.id` stays the id
+ * of the conversation doing the work (a task's own). No root in context, no
+ * attribute: it is never synthesized.
+ *
  * Platform traces carry conversation content by default — input/output
  * messages, system instructions, tool definitions/arguments/results — via the
  * shared `@flue/runtime/telemetry` pipeline: an optional `transform` is
@@ -50,7 +60,10 @@
  * coordinator / root-internal module graph, which must stay Node-evaluable.
  */
 import * as cloudflareWorkers from 'cloudflare:workers';
-import type { FlueExecutionInterceptor } from '../../execution-interceptor.ts';
+import type {
+	FlueExecutionContext,
+	FlueExecutionInterceptor,
+} from '../../execution-interceptor.ts';
 import { type FlueInstrumentation, hasInstrumentation, instrument } from '../../instrumentation.ts';
 import type { FlueObservationSubscriber } from '../../observation.ts';
 import {
@@ -180,6 +193,7 @@ export function createCloudflareTracing(
 	function openSpan<T>(
 		key: string,
 		span: PendingSpan,
+		ctx: FlueExecutionContext,
 		next: () => Promise<T>,
 		owner?: string,
 	): Promise<T> {
@@ -194,7 +208,16 @@ export function createCloudflareTracing(
 			};
 			active.set(key, tracked);
 			// Attribute (and content-projection) work only on sampled invocations.
-			if (opened.isTraced) writeAttributes(tracked, span.attributes(tracked.ledger));
+			// The Session id is read from the execution context, not the event:
+			// the root conversation id rides every interception beneath the root
+			// (tasks and action harnesses inherit it). It is operational, so it
+			// leads the batch ahead of content.
+			if (opened.isTraced) {
+				writeAttributes(tracked, {
+					[ATTR.sessionId]: ctx.rootConversationId,
+					...span.attributes(tracked.ledger),
+				});
+			}
 			let running: Promise<T>;
 			try {
 				running = next();
@@ -618,7 +641,7 @@ export function createCloudflareTracing(
 			// submission-level wrapper in agent-submissions. The alarm invocation
 			// is already the platform root for it — pass through.
 			if (!span) return next();
-			return openSpan(key, span, next);
+			return openSpan(key, span, ctx, next);
 		}
 		const owner = ctx.operationId ? operationKey(ctx) : undefined;
 		if (operation.type === 'model') {
@@ -628,18 +651,18 @@ export function createCloudflareTracing(
 			if (active.has(key)) return next();
 			const span = pending.get(key);
 			if (!span) return next();
-			return openSpan(key, span, next, owner);
+			return openSpan(key, span, ctx, next, owner);
 		}
 		if (operation.type === 'tool') {
 			const key = toolKey({ ...ctx, toolCallId: operation.toolCallId });
 			const span = pending.get(key);
 			if (!span) return next();
-			return openSpan(key, span, next, owner);
+			return openSpan(key, span, ctx, next, owner);
 		}
 		const key = taskKey({ ...ctx, taskId: operation.taskId });
 		const span = pending.get(key);
 		if (!span) return next();
-		return openSpan(key, span, next, owner);
+		return openSpan(key, span, ctx, next, owner);
 	};
 
 	return {

@@ -10,8 +10,10 @@
  * (array-typed keys like `gen_ai.response.finish_reasons` are omitted rather
  * than JSON-encoded under an array-typed name).
  *
- * Flue-specific keys live under `flue.*`. The `cloudflare.agents.*` namespace
- * belongs to Cloudflare's agents SDK and is not emitted here.
+ * Non-`gen_ai.*` keys come from the general OpenTelemetry conventions
+ * (`error.type`, `server.*`, `session.id`). Flue-specific keys live under
+ * `flue.*`. The `cloudflare.agents.*` namespace belongs to Cloudflare's
+ * agents SDK and is not emitted here.
  */
 export const ATTR = {
 	operationName: 'gen_ai.operation.name',
@@ -19,6 +21,17 @@ export const ATTR = {
 	requestModel: 'gen_ai.request.model',
 	responseModel: 'gen_ai.response.model',
 	responseId: 'gen_ai.response.id',
+	/**
+	 * GenAI registry: "The unique identifier for a conversation (session,
+	 * thread), used to store and correlate messages within this
+	 * conversation."
+	 * https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/registry/attributes/gen-ai.md
+	 *
+	 * Always the conversation doing the work: a delegated task runs in its
+	 * own conversation with its own message history (it never sees the
+	 * parent's), so its spans report that conversation, not the parent's.
+	 * Grouping a parent with its delegates is `sessionId`'s job.
+	 */
 	conversationId: 'gen_ai.conversation.id',
 	compacted: 'gen_ai.conversation.compacted',
 	agentName: 'gen_ai.agent.name',
@@ -37,6 +50,24 @@ export const ATTR = {
 	serverAddress: 'server.address',
 	serverPort: 'server.port',
 	openaiApiType: 'openai.api.type',
+	/**
+	 * General session convention (not part of the GenAI registry, which
+	 * defines no `session.*` key): "A unique ID to identify a session."
+	 * Development status, Opt-In.
+	 * https://opentelemetry.io/docs/specs/semconv/general/session/
+	 * https://opentelemetry.io/docs/specs/semconv/registry/attributes/session/
+	 *
+	 * Flue's use is its own mapping, not something the convention
+	 * prescribes: the Session is a root conversation plus everything it
+	 * delegates, so the value is the root conversation id — equal to
+	 * `gen_ai.conversation.id` on the root's own spans, inherited unchanged
+	 * by every delegated task (any depth), model turn, and tool span beneath
+	 * it. The convention's text frames sessions around client applications
+	 * and inactivity/timeout rollover; Flue's server-side Session does
+	 * neither and ends only with its root conversation. Absent (never
+	 * synthesized) when the context carries no root.
+	 */
+	sessionId: 'session.id',
 } as const;
 
 export const FLUE_ATTR = {

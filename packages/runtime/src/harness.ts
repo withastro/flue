@@ -310,7 +310,17 @@ export class Harness implements FlueHarness {
 			onClose: () => this.openSessions.delete(sessionName),
 			conversationWriter: this.conversationWriter,
 			attachmentStore: this.attachmentStore,
-			executionContext: { ...this.executionContext, harness: harnessScope },
+			executionContext: {
+				...this.executionContext,
+				harness: harnessScope,
+				// A root conversation anchors its own lineage; an action-scoped
+				// child (harness tool / lifecycle hook) keeps the root it inherited.
+				...rootConversationContext(
+					conversation.kind === 'root'
+						? conversation.conversationId
+						: this.executionContext.rootConversationId,
+				),
+			},
 			hookState: this.hookState,
 			rerender: this.rerender,
 			output: this.output,
@@ -417,7 +427,12 @@ export class Harness implements FlueHarness {
 			scopeSignal: this.scopeAbortController.signal,
 			conversationWriter: this.conversationWriter,
 			attachmentStore: this.attachmentStore,
-			executionContext: { ...this.executionContext, harness: harnessScope, taskId: options.taskId },
+			executionContext: {
+				...this.executionContext,
+				harness: harnessScope,
+				taskId: options.taskId,
+				...rootConversationContext(options.rootConversationId),
+			},
 		});
 		await session.initializeCanonicalContext();
 		return session;
@@ -509,6 +524,12 @@ export class Harness implements FlueHarness {
 				}
 			: undefined;
 	}
+}
+
+function rootConversationContext(
+	rootConversationId: string | undefined,
+): Pick<FlueExecutionContext, 'rootConversationId'> {
+	return rootConversationId === undefined ? {} : { rootConversationId };
 }
 
 function normalizeSessionName(name: string | undefined): string {
