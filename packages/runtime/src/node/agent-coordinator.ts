@@ -561,6 +561,14 @@ export function createNodeAgentCoordinator(options: {
 
 	/** Interval (ms) between periodic expired-lease scans in the claim loop. */
 	const LEASE_SCAN_INTERVAL_MS = 15_000;
+	/**
+	 * Slack under the scan interval so an on-time `setInterval` wake still
+	 * passes the gate. `lastLeaseScanAt` is stamped a few ms after the wake
+	 * that started the pass, so the next interval fire (~exactly 15s later)
+	 * otherwise sees `now - lastLeaseScanAt` just under 15s and skips — making
+	 * recovery land at 30s or 45s at random instead of within one scan period.
+	 */
+	const LEASE_SCAN_SLACK_MS = 1_000;
 	let lastLeaseScanAt = 0;
 
 	/**
@@ -572,7 +580,7 @@ export function createNodeAgentCoordinator(options: {
 	 */
 	async function periodicLeaseScan(): Promise<void> {
 		const now = Date.now();
-		if (now - lastLeaseScanAt < LEASE_SCAN_INTERVAL_MS) return;
+		if (now - lastLeaseScanAt < LEASE_SCAN_INTERVAL_MS - LEASE_SCAN_SLACK_MS) return;
 		lastLeaseScanAt = now;
 		await enforceActiveDeadlines();
 		await reconcileRunningSubmissions();
