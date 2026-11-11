@@ -1,5 +1,5 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
-import { type Static, Type } from '@earendil-works/pi-ai';
+import { type Static, Type } from 'typebox';
 import { composeTimeoutSignal } from './abort.ts';
 import { decodeBase64 } from './base64.ts';
 import type { PackagedSkillDirectory, Sandbox } from './types.ts';
