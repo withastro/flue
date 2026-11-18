@@ -9,7 +9,7 @@
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@earendil-works/pi-ai": "^1.1.0",
+		"@earendil-works/pi-ai": "^1.5.0",
 		"@flue/react": "workspace:*",
 		"@flue/runtime": "workspace:*",
 		"@flue/sdk": "workspace:*",

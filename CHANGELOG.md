@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.1 - 2026-11-18
+
+### Fixes & Other Changes
+
+- **Updated `@earendil-works/pi-ai` and `@earendil-works/pi-agent-core` to 1.5.2, fixing builds that picked up pi-ai 1.5.** `@flue/runtime` 2.3.0 imported TypeBox through `@earendil-works/pi-ai`, which stopped re-exporting it in 1.5.0, so a fresh install failed `vite build`. Flue now depends on `typebox` directly and requires pi `^1.5.0`; remove any overrides that held pi at 1.4. If your own code imports `Type` or `Static` from `@earendil-works/pi-ai`, import them from `typebox` instead. Pi now validates tool arguments with its own JSON Schema validator, which coerces a little more (for example `"3"` for a number) and words its validation errors differently. OpenAI-compatible requests with no tools no longer send `"tools": []`; set `compat.requiresToolsWithToolHistory: true` on models behind proxies that require it, such as older LiteLLM versions in front of Anthropic.
+- **Workers AI binding models on the Responses API declare tools the way pi's own OpenAI provider does.** Since pi 1.4, the binding passed a boolean where pi expected a tool-support mode, so a model without deferred tool loading could leave tools added mid-conversation out of its request. Models that support mid-conversation tool additions now declare every tool through `additional_tools` input items.
+
 ## 2.3.0 - 2026-10-12
 
 ### New Features

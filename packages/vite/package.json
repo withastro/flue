@@ -1,6 +1,6 @@
 {
 	"name": "@flue/vite",
-	"version": "2.3.0",
+	"version": "2.3.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -47,7 +47,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
-		"@earendil-works/pi-ai": "^1.1.0",
+		"@earendil-works/pi-ai": "^1.5.0",
 		"hono": "^4.12.32",
 		"tsdown": "^0.22.7",
 		"typescript": "^7.0.2",

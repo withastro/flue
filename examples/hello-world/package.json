@@ -4,7 +4,7 @@
 	"type": "module",
 	"dependencies": {
 		"@daytona/sdk": "*",
-		"@earendil-works/pi-ai": "^1.1.0",
+		"@earendil-works/pi-ai": "^1.5.0",
 		"@flue/runtime": "workspace:*",
 		"hono": "^4.12.32",
 		"just-bash": "^3.0.1",
