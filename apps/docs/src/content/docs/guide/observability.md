@@ -1,7 +1,7 @@
 ---
 title: Observability
 description: Observe agent activity through the runtime event stream — model turns, tool calls, logs, and token usage — and export it to your observability stack.
-lastReviewedAt: 2026-07-21
+lastReviewedAt: 2026-09-18
 ---
 
 Flue emits everything its agents do — model turns, tool calls, structured logs, compactions, and settlements — as typed **runtime events** your application can observe in process. This surface is separate from the per-conversation message stream a chat UI reads, which belongs to [Routing](/docs/guide/routing/) and the [Flue Agent SDK](/docs/sdk/overview/). This guide covers the two surfaces and when to use each, subscribing with `observe()`, what the event stream contains, token usage and provider diagnostics on model turns, tool activity and logs, exporting telemetry to Sentry, Braintrust, and OpenTelemetry, and how agent activity surfaces in Cloudflare's platform observability.
@@ -53,7 +53,7 @@ Every event carries the event-format version (`v: 3`), a per-context `eventIndex
 | `operation_start`, `operation`                        | Prompt, skill, task, shell, and compact operation boundaries, with duration and rolled-up usage. |
 | `turn_start`, `turn_request`, `turn`, `turn_messages` | Model turns (see [below](#token-usage)).                                                         |
 | `message_*`, `text_delta`, `thinking_*`               | Live message and reasoning progress.                                                             |
-| `tool_start`, `tool`                                  | Tool execution, correlated by `toolCallId`.                                                      |
+| `tool_start`, `tool_update`, `tool`                   | Tool execution and live progress, correlated by `toolCallId`.                                    |
 | `task_start`, `task`                                  | Subagent task delegation, with result, error state, and duration.                                |
 | `compaction_start`, `compaction`                      | Context compaction, with message counts and usage.                                               |
 | `log`                                                 | Structured logs written by your tools and hooks (see [below](#tool-activity-and-logs)).          |
@@ -127,7 +127,7 @@ observe((event) => {
 
 ## Tool activity and logs
 
-Tool execution emits `tool_start` and `tool` events carrying the tool name, `toolCallId`, duration, error state, and result — for both model-driven calls and programmatic shell activity. The live observation adds the normalized arguments and effective result.
+Tool execution emits `tool_start` and `tool` events carrying the tool name, `toolCallId`, duration, error state, and result — for both model-driven calls and programmatic shell activity. Model tools may additionally emit live-only `tool_update` progress snapshots; the built-in `bash` tool does so when its sandbox supports output streaming. The live observation adds the normalized arguments and effective result.
 
 For progress inside a long-running tool, the tool's `run` context provides a logger (see [Tools](/docs/guide/tools/#how-a-tool-call-works)); lifecycle hook contexts like `useAgentStart` carry the same `log` interface. Each call emits a `log` event with a level, a message, and your attributes — tool logs additionally stamped with `tool` and `toolCallId`, hook logs with the hook that wrote them. The model never sees log lines; they exist for your application:
 

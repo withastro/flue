@@ -35,6 +35,7 @@ export function redactEventImages(event: FlueEventInput): FlueEventInput {
 			const messages = redactEachMessageImages(event.messages);
 			return messages === event.messages ? event : { ...event, messages };
 		}
+		case 'tool_update':
 		case 'tool': {
 			const result = redactToolResultImages(event.result);
 			return result === event.result ? event : { ...event, result };
